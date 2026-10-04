@@ -39,7 +39,8 @@ Do not mention tools, SKU format rules, or that a database exists.
 
 
 def allowlisted_model():
-    chosen = os.environ.get("OPENROUTER_MODEL", "qwen/qwen3.8-27b:free")
+    # Seed default is the free router. Pin a :free id in .env for a fixed model.
+    chosen = os.environ.get("OPENROUTER_MODEL", "openrouter/free")
     allowed = {
         line.strip()
         for line in ALLOWLIST.read_text().splitlines()
@@ -169,10 +170,12 @@ def complete(model, messages, tools):
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")
         raise SystemExit(f"openrouter {exc.code}: {detail[:500]}") from exc
-    return payload["choices"][0]["message"], payload.get("usage") or {}
+    # openrouter/free rewrites this to the model that actually answered.
+    served = payload.get("model") or model
+    return payload["choices"][0]["message"], payload.get("usage") or {}, served
 
 
-def turn(store, tracer, model, tools, history, utterance, request_id):
+def turn(store, tracer, model, tools, history, utterance, request_id, served=None):
     history.append({"role": "user", "content": utterance})
     messages = [
         {"role": "system", "content": SYSTEM},
@@ -180,17 +183,25 @@ def turn(store, tracer, model, tools, history, utterance, request_id):
         *history,
     ]
     span = turn_span(tracer, request_id, utterance)
+    span.set_attribute("shopkeeper.requested_model", model)
+    if served is None:
+        served = []
     try:
-        return _turn(store, tracer, span, model, tools, history, messages, request_id)
+        return _turn(
+            store, tracer, span, model, tools, history, messages, request_id, served
+        )
     finally:
+        if served:
+            span.set_attribute("shopkeeper.served_models", ",".join(served))
         span.end()
         flush()
 
 
-def _turn(store, tracer, span, model, tools, history, messages, request_id):
+def _turn(store, tracer, span, model, tools, history, messages, request_id, served):
     for _ in range(4):
-        message, usage = complete(model, messages, tools)
-        llm_span(tracer, span, model, messages, message, usage)
+        message, usage, answered_by = complete(model, messages, tools)
+        served.append(answered_by)
+        llm_span(tracer, span, answered_by, messages, message, usage)
         tool_calls = message.get("tool_calls") or []
         if not tool_calls:
             text = message.get("content") or ""

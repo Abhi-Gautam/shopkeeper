@@ -1,7 +1,11 @@
 # Free OpenRouter models permitted for this experiment.
-# Checked 2026-10-04: prompt and completion price were "0", and the
-# model advertised tools plus structured_outputs or response_format.
-# Do not add typesafe/jev-router (dynamic price) or openrouter/free
-# (unpinned model identity).
+# Checked 2026-10-04: the pinned rows had prompt and completion price "0",
+# and advertised tools plus structured_outputs or response_format.
+# Do not add typesafe/jev-router (dynamic price).
+#
+# openrouter/free is the seed mixer only. It picks a free model at random,
+# already filtered to ones that can call tools. Do not use it for evals:
+# a score needs a pinned id, the two rows below.
+openrouter/free
 qwen/qwen3.8-27b:free
 nvidia/nemotron-3-super-120b-a12b:free

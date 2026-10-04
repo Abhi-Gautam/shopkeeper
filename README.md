@@ -45,8 +45,10 @@ make phoenix     # message viewer on http://localhost:6006
 run both; two writers on `store/kirana.duckdb` lock or corrupt the shelf.
 
 Copy `.env.example` to `.env`. Completions need `OPENROUTER_API_KEY`.
-The model must be in `models.allowlist`. Default is
-`qwen/qwen3.8-27b:free`.
+The model must be in `models.allowlist`. Default is `openrouter/free`,
+which picks a free model at random and only from ones that can call
+tools. The reply names the model that actually answered. Pin a `:free`
+id in `.env` when a score has to be about one model.
 
 ## Traces
 
