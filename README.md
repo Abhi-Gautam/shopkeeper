@@ -50,6 +50,23 @@ which picks a free model at random and only from ones that can call
 tools. The reply names the model that actually answered. Pin a `:free`
 id in `.env` when a score has to be about one model.
 
+## Floor
+
+`make floor` serves the picture at http://127.0.0.1:8787. Staff is how
+many workers pull from the line. Arrivals is how often a new customer
+walks in. The two charts read Phoenix (`GET /v1/projects/default/spans`,
+last minute), so they stay put if the page is refreshed. Bubbles come
+from the runner, because Phoenix does not know which worker took which
+customer.
+
+The page is `ui/index.html` and `ui/shop.js`. Opened as a file, it plays
+a tape. Served, it follows `/events`. One DuckDB process still owns the
+shelf, so do not run this beside `scratch/run_prompts.py`.
+
+`floor/conversations.txt` is the set to record. A `---` starts a new
+customer. Lines after it share a memory. The earlier scratch prompts
+do not.
+
 ## Traces
 
 Phoenix lives in `docker-compose.yml` (`arizephoenix/phoenix`,

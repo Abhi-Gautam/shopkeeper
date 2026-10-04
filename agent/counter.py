@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import urllib.error
 import urllib.request
 import uuid
@@ -74,6 +75,10 @@ class Store:
             stderr=subprocess.DEVNULL,
             bufsize=0,
         )
+        # One process owns the shelf. Workers may call the model at the
+        # same time, but their tool calls take turns on this pipe.
+        self.pipe = threading.Lock()
+        self.watch = threading.local()
         self.next_id = 1
         self.rpc({
             "method": "initialize",
@@ -86,29 +91,31 @@ class Store:
         self.notify("notifications/initialized")
 
     def rpc(self, message):
-        message = {"jsonrpc": "2.0", "id": self.next_id, **message}
-        expect = self.next_id
-        self.next_id += 1
-        self.proc.stdin.write((json.dumps(message) + "\n").encode())
-        self.proc.stdin.flush()
-        while True:
-            line = self.proc.stdout.readline()
-            if not line:
-                raise SystemExit("duckdb MCP server exited")
-            text = line.decode(errors="replace").strip()
-            if not text.startswith("{"):
-                continue
-            parsed = json.loads(text)
-            if parsed.get("id") == expect:
-                if "error" in parsed:
-                    raise SystemExit(parsed["error"])
-                return parsed["result"]
+        with self.pipe:
+            message = {"jsonrpc": "2.0", "id": self.next_id, **message}
+            expect = self.next_id
+            self.next_id += 1
+            self.proc.stdin.write((json.dumps(message) + "\n").encode())
+            self.proc.stdin.flush()
+            while True:
+                line = self.proc.stdout.readline()
+                if not line:
+                    raise SystemExit("duckdb MCP server exited")
+                text = line.decode(errors="replace").strip()
+                if not text.startswith("{"):
+                    continue
+                parsed = json.loads(text)
+                if parsed.get("id") == expect:
+                    if "error" in parsed:
+                        raise SystemExit(parsed["error"])
+                    return parsed["result"]
 
     def notify(self, method):
-        self.proc.stdin.write(
-            (json.dumps({"jsonrpc": "2.0", "method": method}) + "\n").encode()
-        )
-        self.proc.stdin.flush()
+        with self.pipe:
+            self.proc.stdin.write(
+                (json.dumps({"jsonrpc": "2.0", "method": method}) + "\n").encode()
+            )
+            self.proc.stdin.flush()
 
     def tools(self):
         listed = self.rpc({"method": "tools/list", "params": {}})
@@ -224,6 +231,9 @@ def _turn(store, tracer, span, model, tools, history, messages, request_id, serv
                 arguments["request_id"] = request_id
                 arguments["qty"] = int(arguments.get("qty") or 1)
             result = store.call(name, arguments)
+            watched = getattr(store.watch, "calls", None)
+            if watched is not None:
+                watched.append({"name": name, "result": result})
             tool_span(tracer, span, name, arguments, result)
             messages.append({
                 "role": "tool",

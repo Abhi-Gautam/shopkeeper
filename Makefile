@@ -2,7 +2,7 @@ DUCKDB ?= duckdb
 DB := store/kirana.duckdb
 CSV := store/products.csv
 
-.PHONY: catalog db serve phoenix clean
+.PHONY: catalog db serve phoenix floor clean
 
 catalog: $(CSV)
 
@@ -22,6 +22,10 @@ serve: $(DB)
 # Message viewer. UI http://localhost:6006  OTLP http://localhost:6006/v1/traces
 phoenix:
 	docker compose up -d
+
+# The picture. http://127.0.0.1:8787  Do not run beside the prompt batch.
+floor: $(DB)
+	.venv/bin/python floor/server.py
 
 clean:
 	rm -f $(DB) $(DB).wal $(CSV)
