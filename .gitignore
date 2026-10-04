@@ -1,0 +1,10 @@
+store/kirana.duckdb
+store/kirana.duckdb.wal
+store/products.csv
+.env
+.venv/
+__pycache__/
+*.py[cod]
+
+# Batch prompts and the runner. Not part of the counter.
+scratch/

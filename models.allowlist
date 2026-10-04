@@ -1,0 +1,7 @@
+# Free OpenRouter models permitted for this experiment.
+# Checked 2026-10-04: prompt and completion price were "0", and the
+# model advertised tools plus structured_outputs or response_format.
+# Do not add typesafe/jev-router (dynamic price) or openrouter/free
+# (unpinned model identity).
+qwen/qwen3.8-27b:free
+nvidia/nemotron-3-super-120b-a12b:free

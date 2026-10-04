@@ -1,0 +1,11 @@
+# Message viewer only. The counter and DuckDB stay on the host.
+# UI http://localhost:6006
+# OTLP HTTP http://localhost:6006/v1/traces
+services:
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: shopkeeper-phoenix
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    restart: unless-stopped
