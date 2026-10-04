@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """The shop the page draws.
 
-Serves ui/ and speaks the event stream the page already understands.
-Sliders set how many workers pull from the line, and how often a new
-customer walks in. Model calls overlap. Tool calls take turns on the
-one DuckDB process.
+Serves ui/ and streams one event per thing that actually happened: a
+customer joining the line, a worker taking them, every model call, every
+guide and buy on the DuckDB process, the reply, and the walk out.
 
-The two chart numbers come from Phoenix (GET /v1/projects/default/spans),
-not from this process's memory, so they survive a restart of the page.
-Bubbles still come from here, because Phoenix does not know which worker
-took which customer.
+Nothing on the page is invented. If a number is on screen, an event
+carried it. Token counts come from the OpenRouter usage block, step
+timings from around the calls themselves, and the tool fields are parsed
+from what DuckDB actually returned.
+
+Sliders set how many workers pull from the line, and how often a new
+customer walks in. Model calls overlap. Tool calls take turns on the one
+DuckDB process, and that wait is reported separately from the query.
+
+Phoenix is the second opinion on tokens and p95, not the only one. If it
+is down the page falls back to this process's own completed turns.
 
 Does not start if another process is already answering on this port.
 Does not own a second duckdb file. Stop the prompt batch before this.
@@ -18,6 +24,7 @@ Does not own a second duckdb file. Stop the prompt batch before this.
 import json
 import queue
 import random
+import re
 import sys
 import threading
 import time
@@ -38,9 +45,12 @@ HOST = "127.0.0.1"
 PORT = 8787
 PHOENIX = "http://127.0.0.1:6006"
 MAX_WAIT = 8
+WORKERS = 3
 
 STAFF = 2
 ARRIVAL = 4  # customers per minute
+
+KEEP = 1400  # events held for a page that reloads
 
 
 def load_customers():
@@ -62,6 +72,99 @@ def load_customers():
     return customers
 
 
+# --- reading what DuckDB said -------------------------------------------
+
+def markdown_rows(text):
+    """Rows out of the markdown table the guide tool returns."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip().startswith("|")]
+    if len(lines) < 2:
+        return []
+
+    def cells(line):
+        return [c.strip() for c in line.strip().strip("|").split("|")]
+
+    header = cells(lines[0])
+    body = lines[1:]
+    if body and set(body[0].replace("|", "").replace(" ", "")) <= {"-", ":"}:
+        body = body[1:]
+    rows = []
+    for line in body:
+        values = cells(line)
+        if len(values) != len(header):
+            continue
+        rows.append(dict(zip(header, values)))
+    return rows
+
+
+def truthy(value):
+    return str(value).strip().lower() in ("true", "t", "1", "yes")
+
+
+def guide_fields(result):
+    """What the page shows for a guide call: how much the shelf offered."""
+    rows = markdown_rows(result)
+    if not rows:
+        # Some builds answer json instead of markdown. Same shape either way.
+        try:
+            parsed = json.loads(result)
+            rows = parsed if isinstance(parsed, list) else [parsed]
+        except (json.JSONDecodeError, TypeError):
+            rows = []
+    in_stock = 0
+    names = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if truthy(row.get("in_stock")) or _int(row.get("stock")) > 0:
+            in_stock += 1
+        label = str(row.get("name") or "").strip()
+        pack = str(row.get("pack_label") or "").strip()
+        price = str(row.get("price_inr") or "").strip()
+        if label:
+            names.append({"name": label, "pack": pack, "price": price,
+                          "stock": _int(row.get("stock")),
+                          "sku": str(row.get("sku") or "").strip()})
+    return {"rows": len(rows), "in_stock": in_stock, "offered": names[:6]}
+
+
+def _int(value):
+    try:
+        return int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return 0
+
+
+def buy_fields(result):
+    """status / sku / qty / price / stock_left out of the buy result."""
+    row = None
+    try:
+        parsed = json.loads(result)
+        if isinstance(parsed, list) and parsed:
+            row = parsed[0]
+        elif isinstance(parsed, dict):
+            row = parsed
+    except (json.JSONDecodeError, TypeError):
+        row = None
+    if row is None:
+        rows = markdown_rows(result)
+        row = rows[0] if rows else None
+    if isinstance(row, dict):
+        return {
+            "status": str(row.get("status") or "").strip() or "unknown",
+            "sku": str(row.get("sku") or "").strip(),
+            "qty": _int(row.get("qty_sold")),
+            "price": str(row.get("price_inr") or "").strip(),
+            "stock_left": _int(row.get("stock_left")),
+        }
+    text = (result or "").lower()
+    for word in ("sold", "out_of_stock", "unknown_sku", "bad_qty"):
+        if word in text:
+            return {"status": word, "sku": "", "qty": 0, "price": "",
+                    "stock_left": 0}
+    return {"status": "unknown", "sku": "", "qty": 0, "price": "",
+            "stock_left": 0}
+
+
 class Shop:
     def __init__(self, customers):
         self.customers = customers
@@ -76,13 +179,18 @@ class Shop:
         self.tools = None
         self.tracer = None
         self.model = None
+        self.busy = set()
+        self.lock = threading.Lock()
+        self.turns = []  # completed turns, for the local metric fallback
+        self.tally = {"turns": 0, "sold": 0, "out": 0, "guide": 0, "error": 0,
+                      "guides": 0, "buys": 0, "tokens": 0, "dropped": 0}
 
     def emit(self, event):
         event["t"] = time.time()
         with self.cond:
             self.events.append(event)
-            if len(self.events) > 400:
-                del self.events[:200]
+            if len(self.events) > KEEP:
+                del self.events[: KEEP // 2]
             self.cond.notify_all()
 
     def snapshot(self):
@@ -98,10 +206,67 @@ class Shop:
 
     def set_control(self, staff, arrival):
         if staff is not None:
-            self.staff = max(1, min(3, int(staff)))
+            self.staff = max(1, min(WORKERS, int(staff)))
         if arrival is not None:
             self.arrival = max(1, min(12, int(arrival)))
-        self.emit({"type": "config", "staff": self.staff, "arrival": self.arrival})
+        self.emit({"type": "config", "staff": self.staff,
+                   "arrival": self.arrival})
+
+    def mark(self, worker, busy):
+        with self.lock:
+            if busy:
+                self.busy.add(worker)
+            else:
+                self.busy.discard(worker)
+        self.emit_queue()
+
+    def emit_queue(self):
+        with self.lock:
+            busy = sorted(self.busy)
+        self.emit({
+            "type": "queue",
+            "depth": self.line.qsize(),
+            "cap": MAX_WAIT,
+            "busy": busy,
+            "dropped": self.dropped,
+        })
+
+    def record(self, event):
+        """Keep the tally and the window the local metrics are computed from."""
+        status = event.get("status")
+        with self.lock:
+            self.tally["turns"] += 1
+            if status in ("sold", "out", "guide", "error"):
+                self.tally[status] += 1
+            self.tally["tokens"] += int(event.get("tokens") or 0)
+            for step in event.get("steps") or []:
+                if step.get("kind") != "tool":
+                    continue
+                if step.get("name") == "guide":
+                    self.tally["guides"] += 1
+                elif step.get("name") == "buy":
+                    self.tally["buys"] += 1
+            self.turns.append({
+                "t": time.time(),
+                "tokens": int(event.get("tokens") or 0),
+                "seconds": float(event.get("seconds") or 0),
+            })
+            cutoff = time.time() - 120
+            self.turns = [x for x in self.turns if x["t"] >= cutoff]
+            tally = dict(self.tally)
+        self.emit({"type": "stats", **tally})
+
+    def local_metrics(self):
+        now = time.time()
+        with self.lock:
+            window = [x for x in self.turns if now - x["t"] <= 60]
+        tokens = sum(x["tokens"] for x in window)
+        lat = sorted(x["seconds"] for x in window)
+        p95 = 0.0
+        if lat:
+            p95 = lat[min(len(lat) - 1, int(round(0.95 * (len(lat) - 1))))]
+        return {"tokens_per_min": tokens, "p95": round(p95, 2),
+                "source": "floor"}
 
     def open_shelf(self):
         counter.load_dotenv()
@@ -125,26 +290,24 @@ def spoken(reply):
     text = (reply or "").replace("\n", " ").strip()
     if "</think>" in text:
         text = text.split("</think>")[-1].strip()
+    text = re.sub(r"<think>.*?(</think>|$)", "", text, flags=re.S).strip()
     lower = text.lower()
     if lower.startswith("the user asks") or lower.startswith("the assistant should"):
         return "One moment."
-    return text[:180]
+    return text[:240]
 
 
-def status_of(watched, reply):
-    """The grade is the shelf result, not the sentence.
-
-    Same read as the Phoenix count: a buy span whose result says sold.
-    """
+def status_of(steps, reply):
+    """The grade is the shelf result, not the sentence."""
     saw_buy = False
-    for call in watched:
-        if call.get("name") != "buy":
+    for step in steps:
+        if step.get("kind") != "tool" or step.get("name") != "buy":
             continue
         saw_buy = True
-        result = call.get("result") or ""
-        if '"sold"' in result:
+        status = (step.get("buy") or {}).get("status")
+        if status == "sold":
             return "sold"
-        if "out_of_stock" in result or "unknown_sku" in result:
+        if status in ("out_of_stock", "unknown_sku", "bad_qty"):
             return "out"
     if saw_buy:
         return "guide"
@@ -153,18 +316,31 @@ def status_of(watched, reply):
     return "guide"
 
 
-def serve_one(shop, worker, ask, history, request_id):
-    """One customer line. Returns the event fields the page draws."""
+def serve_one(shop, worker, cid, tid, ask, history):
+    """One utterance. Streams its own steps, returns the reply event."""
     served = []
-    watched = []
-    shop.store.watch.calls = watched
+    steps = []
+    shop.store.watch.calls = []
     started = time.monotonic()
     reply = ""
+
+    def watch(event):
+        kind = event.get("kind")
+        out = {"type": "step", "cid": cid, "tid": tid, "worker": worker, **event}
+        if kind == "tool" and event.get("name") == "guide":
+            out["guide"] = guide_fields(event.get("result"))
+        elif kind == "tool" and event.get("name") == "buy":
+            out["buy"] = buy_fields(event.get("result"))
+        out.pop("result", None)  # the raw markdown is for Phoenix, not the page
+        if kind in ("llm", "tool"):
+            steps.append(dict(out))
+        shop.emit(out)
+
     for attempt in range(4):
         try:
             reply = counter.turn(
                 shop.store, shop.tracer, shop.model, shop.tools,
-                history, ask, request_id, served,
+                history, ask, tid, served, watch,
             )
             break
         except BaseException as exc:
@@ -174,21 +350,32 @@ def serve_one(shop, worker, ask, history, request_id):
             if "429" not in text and "timeout" not in text and "timed out" not in text:
                 reply = "One moment."
                 break
+            shop.emit({"type": "step", "cid": cid, "tid": tid, "worker": worker,
+                       "kind": "retry", "row": "retry" + str(attempt + 1),
+                       "attempt": attempt + 1,
+                       "why": str(exc)[:120]})
             time.sleep(min(8 * (attempt + 1), 30))
             history[:] = []
     else:
         reply = reply or "One moment."
+
     seconds = round(time.monotonic() - started, 2)
-    status = "wait" if reply == "One moment." else status_of(watched, reply)
+    tokens = sum(
+        int(s.get("prompt_tokens") or 0) + int(s.get("completion_tokens") or 0)
+        for s in steps if s.get("kind") == "llm"
+    )
+    status = "wait" if reply == "One moment." else status_of(steps, reply)
     return {
         "type": "reply",
-        "id": request_id,
+        "cid": cid,
+        "tid": tid,
         "worker": worker,
         "text": spoken(reply),
         "status": status,
-        "tokens": 0,
+        "tokens": tokens,
         "seconds": seconds,
         "served": served,
+        "steps": steps,
     }
 
 
@@ -201,37 +388,46 @@ def worker_loop(shop, index):
             job = shop.line.get(timeout=0.5)
         except queue.Empty:
             continue
+        cid = job["id"]
+        lines = job["lines"]
+        waited = round(time.time() - job["queued"], 2)
+        shop.mark(index, True)
         history = []
-        # A new id per line, so the page draws the follow-up as a new ask.
-        # The history list is what makes it the same customer to the model.
-        for ask in job["lines"]:
-            if shop.stop.is_set():
-                break
-            line_id = uuid.uuid4().hex[:8]
-            shop.emit({"type": "arrive", "id": line_id, "ask": ask})
-            shop.emit({"type": "assign", "id": line_id, "worker": index})
-            request_id = uuid.uuid4().hex
-            try:
-                event = serve_one(shop, index, ask, history, request_id)
-            except BaseException as exc:
-                event = {
-                    "type": "reply",
-                    "id": line_id,
-                    "worker": index,
-                    "text": "One moment.",
-                    "status": "error",
-                    "tokens": 0,
-                    "seconds": 0,
-                }
-                print(f"worker {index} stopped the turn: {exc}", file=sys.stderr)
+        try:
+            for turn_index, ask in enumerate(lines):
+                if shop.stop.is_set():
+                    break
+                tid = uuid.uuid4().hex
+                if turn_index:
+                    # A follow-up. Already at the counter, so no queue wait.
+                    shop.emit({"type": "arrive", "cid": cid, "tid": tid,
+                               "text": ask, "turn": turn_index + 1,
+                               "turns": len(lines), "queued": False})
+                shop.emit({"type": "assign", "cid": cid, "tid": tid,
+                           "worker": index, "turn": turn_index + 1,
+                           "turns": len(lines),
+                           "waited": waited if turn_index == 0 else 0.0})
+                try:
+                    event = serve_one(shop, index, cid, tid, ask, history)
+                except BaseException as exc:
+                    print(f"worker {index} stopped the turn: {exc}",
+                          file=sys.stderr)
+                    event = {
+                        "type": "reply", "cid": cid, "tid": tid,
+                        "worker": index, "text": "One moment.",
+                        "status": "error", "tokens": 0, "seconds": 0,
+                        "served": [], "steps": [],
+                    }
+                    shop.emit(event)
+                    shop.record(event)
+                    break
                 shop.emit(event)
-                shop.emit({"type": "leave", "id": line_id})
-                break
-            event["id"] = line_id
-            shop.emit(event)
-            time.sleep(1.4)
-            shop.emit({"type": "leave", "id": line_id})
-            time.sleep(0.4)
+                shop.record(event)
+                time.sleep(1.4)
+        finally:
+            shop.emit({"type": "leave", "cid": cid})
+            shop.mark(index, False)
+        time.sleep(0.4)
 
 
 def arrival_loop(shop):
@@ -240,6 +436,9 @@ def arrival_loop(shop):
     A follow-up ("the 5 kg, if you have it") has to reach the same worker
     with the memory of the line before it. Splitting those across the pool
     is how the first 377 prompts came back as strangers.
+
+    The arrive event is emitted here, when they walk in, not when a worker
+    frees up. That is the whole point of drawing a queue.
     """
     order = list(range(len(shop.customers)))
     random.shuffle(order)
@@ -249,31 +448,31 @@ def arrival_loop(shop):
         time.sleep(random.expovariate(per_minute / 60))
         if shop.stop.is_set():
             return
-        customer = shop.customers[order[cursor % len(order)]]
+        lines = shop.customers[order[cursor % len(order)]]
         cursor += 1
         cid = uuid.uuid4().hex[:8]
-        job = {"id": cid, "lines": customer}
+        shop.emit({"type": "arrive", "cid": cid, "tid": None,
+                   "text": lines[0], "turn": 1, "turns": len(lines),
+                   "queued": True})
         try:
-            shop.line.put(job, timeout=2)
+            shop.line.put({"id": cid, "lines": lines, "queued": time.time()},
+                          timeout=2)
+            shop.emit_queue()
         except queue.Full:
             shop.dropped += 1
-            shop.emit({"type": "arrive", "id": cid, "ask": customer[0]})
-            shop.emit({
-                "type": "reply",
-                "id": cid,
-                "worker": 0,
-                "text": "Line is full. Come back in a minute.",
-                "status": "out",
-                "tokens": 0,
-                "seconds": 0,
-            })
-            shop.emit({"type": "leave", "id": cid})
+            with shop.lock:
+                shop.tally["dropped"] = shop.dropped
+            shop.emit({"type": "drop", "cid": cid, "depth": shop.line.qsize(),
+                       "cap": MAX_WAIT})
+            shop.emit({"type": "leave", "cid": cid})
+            shop.emit_queue()
 
 
 def phoenix_metrics():
     """Tokens and p95 from Phoenix spans in the last minute.
 
-    Returns None when Phoenix is down. The page then uses its own events.
+    Returns None when Phoenix is down. The page then uses the floor's own
+    completed turns, which carry the same usage numbers.
     """
     end = datetime.now(timezone.utc)
     start = end - timedelta(seconds=60)
@@ -307,19 +506,20 @@ def phoenix_metrics():
         tokens += int(attrs.get("llm.token_count.prompt") or 0)
         tokens += int(attrs.get("llm.token_count.completion") or 0)
     if not lat:
-        return {"tokens_per_min": tokens, "p95": 0}
+        return {"tokens_per_min": tokens, "p95": 0, "source": "phoenix"}
     lat.sort()
     return {
         "tokens_per_min": tokens,
         "p95": round(lat[min(len(lat) - 1, int(round(0.95 * (len(lat) - 1))))], 2),
+        "source": "phoenix",
     }
 
 
 def metrics_loop(shop):
     while not shop.stop.is_set():
         numbers = phoenix_metrics()
-        if numbers:
-            shop.emit({"type": "metrics", **numbers})
+        shop.emit({"type": "metrics", **(numbers or shop.local_metrics())})
+        shop.emit_queue()
         shop.stop.wait(5)
 
 
@@ -344,10 +544,12 @@ class Handler(BaseHTTPRequestHandler):
             self._events()
             return
         if path in ("/", "/index.html"):
-            self._send(200, (UI / "index.html").read_bytes(), "text/html; charset=utf-8")
+            self._send(200, (UI / "index.html").read_bytes(),
+                       "text/html; charset=utf-8")
             return
         if path == "/shop.js":
-            self._send(200, (UI / "shop.js").read_bytes(), "text/javascript; charset=utf-8")
+            self._send(200, (UI / "shop.js").read_bytes(),
+                       "text/javascript; charset=utf-8")
             return
         self._send(404, "not found", "text/plain")
 
@@ -370,19 +572,27 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "keep-alive")
         self.end_headers()
+        with self.shop.lock:
+            tally = dict(self.shop.tally)
         hello = {
             "type": "hello",
             "staff": self.shop.staff,
             "arrival": self.shop.arrival,
+            "model": self.shop.model,
+            "workers": WORKERS,
+            "cap": MAX_WAIT,
+            "conversations": len(self.shop.customers),
+            "tally": tally,
         }
         try:
             self._write(hello)
             seen = 0
-            # Replay what is already on the board so a refresh is not empty.
+            # Replay the board so a reload is not an empty shop. Every event
+            # the page understands is idempotent, so replay is just catch-up.
             for event in self.shop.snapshot():
-                if event["type"] in ("arrive", "assign", "reply"):
+                if event["type"] != "metrics":
                     self._write(event)
-                    seen += 1
+                seen += 1
             while not self.shop.stop.is_set():
                 events = self.shop.wait_after(seen, timeout=15)
                 if len(events) == seen:
@@ -412,9 +622,13 @@ def main():
     except OSError as exc:
         shop.close_shelf()
         raise SystemExit(f"cannot listen on {HOST}:{PORT}: {exc}") from exc
-    print(f"floor on http://{HOST}:{PORT}  model {shop.model}  customers {len(customers)}", file=sys.stderr)
+    print(f"floor on http://{HOST}:{PORT}  model {shop.model}  "
+          f"customers {len(customers)}", file=sys.stderr)
     print("charts read Phoenix at http://127.0.0.1:6006", file=sys.stderr)
-    threads = [threading.Thread(target=worker_loop, args=(shop, i), daemon=True) for i in range(3)]
+    threads = [
+        threading.Thread(target=worker_loop, args=(shop, i), daemon=True)
+        for i in range(WORKERS)
+    ]
     threads.append(threading.Thread(target=arrival_loop, args=(shop,), daemon=True))
     threads.append(threading.Thread(target=metrics_loop, args=(shop,), daemon=True))
     for thread in threads:

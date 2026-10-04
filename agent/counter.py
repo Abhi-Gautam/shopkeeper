@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -91,7 +92,12 @@ class Store:
         self.notify("notifications/initialized")
 
     def rpc(self, message):
+        # Workers call the model at once but take turns on this pipe. The
+        # time spent waiting for the lock is contention, not DuckDB work,
+        # so the two are reported apart.
+        queued = time.monotonic()
         with self.pipe:
+            self.watch.waited = time.monotonic() - queued
             message = {"jsonrpc": "2.0", "id": self.next_id, **message}
             expect = self.next_id
             self.next_id += 1
@@ -182,7 +188,14 @@ def complete(model, messages, tools):
     return payload["choices"][0]["message"], payload.get("usage") or {}, served
 
 
-def turn(store, tracer, model, tools, history, utterance, request_id, served=None):
+def turn(store, tracer, model, tools, history, utterance, request_id,
+         served=None, watch=None):
+    """One utterance in, one reply out.
+
+    `watch`, if given, is called with a dict per model call and per tool
+    call as they finish. The floor page is drawn from those; nothing here
+    decides what they mean.
+    """
     history.append({"role": "user", "content": utterance})
     messages = [
         {"role": "system", "content": SYSTEM},
@@ -195,7 +208,8 @@ def turn(store, tracer, model, tools, history, utterance, request_id, served=Non
         served = []
     try:
         return _turn(
-            store, tracer, span, model, tools, history, messages, request_id, served
+            store, tracer, span, model, tools, history, messages, request_id,
+            served, watch,
         )
     finally:
         if served:
@@ -204,12 +218,46 @@ def turn(store, tracer, model, tools, history, utterance, request_id, served=Non
         flush()
 
 
-def _turn(store, tracer, span, model, tools, history, messages, request_id, served):
+def _turn(store, tracer, span, model, tools, history, messages, request_id,
+          served, watch=None):
+    def tell(event):
+        if watch:
+            try:
+                watch(event)
+            except Exception:
+                # A page that cannot keep up must not lose the sale.
+                pass
+
+    # One id per row the page draws. The start and the finish of the same
+    # call carry the same id, so a page that reconnects and replays the
+    # stream settles rows in place instead of stacking copies of them.
+    seen = {"row": 0}
+
+    def row():
+        seen["row"] += 1
+        return seen["row"]
+
+    step = 0
     for _ in range(4):
+        step += 1
+        llm_row = row()
+        tell({"kind": "llm.start", "step": step, "row": llm_row, "model": model})
+        began = time.monotonic()
         message, usage, answered_by = complete(model, messages, tools)
+        seconds = time.monotonic() - began
         served.append(answered_by)
         llm_span(tracer, span, answered_by, messages, message, usage)
         tool_calls = message.get("tool_calls") or []
+        tell({
+            "kind": "llm",
+            "step": step,
+            "row": llm_row,
+            "model": answered_by,
+            "seconds": round(seconds, 3),
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+            "wants": [c["function"]["name"] for c in tool_calls],
+        })
         if not tool_calls:
             text = message.get("content") or ""
             history.append({"role": "assistant", "content": text})
@@ -230,11 +278,27 @@ def _turn(store, tracer, span, model, tools, history, messages, request_id, serv
             if name == "buy":
                 arguments["request_id"] = request_id
                 arguments["qty"] = int(arguments.get("qty") or 1)
+            tool_row = row()
+            tell({"kind": "tool.start", "step": step, "row": tool_row,
+                  "name": name, "args": arguments})
+            store.watch.waited = 0.0
+            began = time.monotonic()
             result = store.call(name, arguments)
+            seconds = time.monotonic() - began
             watched = getattr(store.watch, "calls", None)
             if watched is not None:
                 watched.append({"name": name, "result": result})
             tool_span(tracer, span, name, arguments, result)
+            tell({
+                "kind": "tool",
+                "step": step,
+                "row": tool_row,
+                "name": name,
+                "args": arguments,
+                "result": result,
+                "seconds": round(seconds, 4),
+                "waited": round(getattr(store.watch, "waited", 0.0) or 0.0, 4),
+            })
             messages.append({
                 "role": "tool",
                 "tool_call_id": call.get("id", name),

@@ -54,14 +54,60 @@ id in `.env` when a score has to be about one model.
 
 `make floor` serves the picture at http://127.0.0.1:8787. Staff is how
 many workers pull from the line. Arrivals is how often a new customer
-walks in. The two charts read Phoenix (`GET /v1/projects/default/spans`,
-last minute), so they stay put if the page is refreshed. Bubbles come
-from the runner, because Phoenix does not know which worker took which
-customer.
+walks in.
+
+Three surfaces, one event stream:
+
+| Surface | Is | Reads |
+|---|---|---|
+| canvas | the room, 448x252 native, scaled by whole numbers | `arrive` `assign` `step` `reply` `leave` |
+| overlay | every word on the picture, as DOM so it stays sharp | the same events |
+| rail | one card per turn, step by step, newest first | `step` `reply` |
+
+Nothing on the page is invented. Token counts are the OpenRouter usage
+block, step times are measured around the calls themselves, and the
+`guide` / `buy` fields are parsed from what DuckDB answered. If a number
+is on screen, an event carried it.
+
+The events:
+
+```text
+hello    staff, arrival, model, workers, queue cap, conversations, tally
+config   a slider moved
+arrive   cid, text, turn n of m   queued=true is the door, false a follow-up
+assign   cid, tid, worker, waited   how long they stood in the line
+step     llm.start | llm | tool.start | tool | retry
+reply    text, status, seconds, tokens, served models
+leave    cid walks out
+drop     the line was full
+queue    depth, cap, which workers are busy
+stats    running tally of sold / guide / out, and guide / buy calls
+metrics  tokens per minute and p95, from Phoenix or from this process
+```
+
+One customer is a whole conversation, not one line. `cid` is stable
+across every line they say, so a follow-up ("the 5 kg, if you have it")
+draws as the same person with the same memory, on the same worker. `tid`
+is one utterance, and is the `request_id` the `buy` tool is idempotent on.
+
+A guide call sweeps the shelves. A sold `buy` puts a bag on the counter
+and the customer carries it out. An `out_of_stock` blinks an empty gap.
+The waterfall in the rail is to scale against the wall clock of the turn,
+so the model call dwarfing the DuckDB call is the first thing you see:
+`guide` is tens of milliseconds, the completion is seconds.
+
+Tool calls take turns on the one DuckDB process. That wait is reported
+apart from the query, as `waited ... on the pipe`, so contention is
+visible instead of hiding inside the tool time.
+
+Phoenix is the second opinion on tokens and p95, not the only one. If it
+is down the page falls back to this process's own completed turns and the
+card says `this floor` instead of `phoenix`.
 
 The page is `ui/index.html` and `ui/shop.js`. Opened as a file, it plays
-a tape. Served, it follows `/events`. One DuckDB process still owns the
-shelf, so do not run this beside `scratch/run_prompts.py`.
+a tape that exercises the whole protocol. Served, it follows `/events`.
+One DuckDB process still owns the shelf, so do not run this beside
+`scratch/run_prompts.py`.
 
 `floor/conversations.txt` is the set to record. A `---` starts a new
 customer. Lines after it share a memory. The earlier scratch prompts
