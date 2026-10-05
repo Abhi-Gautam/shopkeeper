@@ -42,6 +42,24 @@ Each customer becomes one trace in Phoenix. Under the conversation, every line t
 
 The scores are plain code. They check what DuckDB actually did, not how the reply sounds. Did every line get a reply? Did every sale use a product that `guide` had shown? Did it sell when it should have? Was it the right product, size, and quantity? No model is used to grade another model.
 
+## What the first run showed
+
+As expected for a first run, things went wrong, and most of it was the search tool, not the model. It kept missing products we had, so about half of the customers were told we didn't have something that was on the shelf.
+
+- The search matched only an exact phrase. "rice" worked, but "rice 5 kg" found nothing, and 116 of 171 searches came back empty.
+- The model believed an empty search and told the customer we were out.
+- Results came back cheapest first, 12 at most, so bigger packs like 5 kg rice never showed up.
+- The model made up categories, like `tea`, and shop rules, like "we don't deliver".
+
+| | |
+|---|---|
+| Customers who bought anything | 14 of 100 |
+| Wait per line | 4.0 s median, 8.8 s p95, almost all of it the model |
+| Tokens per customer | about 1,700 in, 108 out |
+| Cost | $0.021 for all 100 customers |
+
+Speed and cost are fine for now. The search comes first.
+
 ---
 
 Checked against Shopkeeper commit [`2cb8293`](https://github.com/Abhi-Gautam/shopkeeper/commit/2cb8293ff5340a1c4c98f470cc5b87579717e0f7). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/run.py), and the [scores](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/score.py).
