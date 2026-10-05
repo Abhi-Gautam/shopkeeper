@@ -22,9 +22,7 @@ The model cannot read the database directly. DuckDB runs as an MCP server and gi
 | `guide` | Searches the shelf and returns up to 12 products, in-stock ones first |
 | `buy` | Sells a product if there is enough stock |
 
-The model has no way to run its own SQL. If the server ever offered a third tool, the shopkeeper would refuse to start.
-
-Each sale carries a `request_id`. If `buy` is called again with the same id, it does not sell a second time. The model never picks this id. The shopkeeper adds a new one for every line the customer says, so a line that gets retried cannot sell twice.
+The model has no way to run its own SQL.
 
 ![The runner sends customers to the counter. The counter calls gpt-6-luna for each step and calls guide and buy on the DuckDB MCP server. Traces and scores go to Phoenix, and the run can also be shown as a shop floor.](/media/shopkeeper/setup.svg)
 
