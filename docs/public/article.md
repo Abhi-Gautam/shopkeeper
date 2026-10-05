@@ -80,9 +80,7 @@ The shelf had 13 packs of Mazola Sunflower Oil, 1 litre.
 
 ## Why it does not sell
 
-The model called `guide` 199 times, and 138 of those searches returned nothing. Here is the first search from the frying oil customer. The model searched for "oil for frying" in the `oil` category, and the shelf sent back an empty table.
-
-![A guide call in Phoenix. The input is the query "oil for frying" with category oil, and the output is only the table header, with no rows.](/media/shopkeeper/phoenix-empty-search.png)
+The model called `guide` 199 times, and 138 of those searches returned nothing.
 
 `guide` looks for the whole search text as one exact phrase:
 
