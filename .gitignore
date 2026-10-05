@@ -5,6 +5,3 @@ store/products.csv
 .venv/
 __pycache__/
 *.py[cod]
-
-# Batch prompts and the runner. Not part of the counter.
-scratch/

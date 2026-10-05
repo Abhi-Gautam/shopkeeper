@@ -1,148 +1,90 @@
 # Shopkeeper
 
-A neighborhood grocery counter on hosted inference. DuckDB is the shelf.
-The model may only guide or buy. Jev and evals are later; the typed
-boundary is already the two tool schemas.
-
-You write the next decisions (prompt, admission, eval set). The store
-load and the counter loop are scaffolding.
-
-## Shape
+A neighborhood grocery counter run by a model, used to learn evals: how a
+change to the prompt, the model or the tools moves accuracy, speed and
+cost. DuckDB is the shelf. The model may only `guide` or `buy`.
 
 ```text
-customer text
-  -> agent/counter.py          OpenAI Agents SDK, two tools only
-       guide  -> DuckDB MCP    read, markdown, no stock change
-       buy    -> DuckDB MCP    one transaction, request_id is idempotent
-  -> reply
-         traces -> Phoenix :6006
+conversations.txt ─► floor/run.py ─► agent/counter.py ─► OpenAI (Agents SDK)
+                        │                 ├─ guide ─► DuckDB MCP  read only
+                        │                 └─ buy   ─► DuckDB MCP  one transaction
+                        ├─ score.py ─► Phoenix experiment (one row per conversation)
+                        ├─ traces ───► Phoenix project (one trace per conversation)
+                        └─ --ui ─────► page at http://127.0.0.1:8787
 ```
-
-One DuckDB process owns `store/shop.duckdb` and speaks MCP on stdin
-as newline-delimited JSON. Built-in SQL tools are off. If the server
-ever publishes anything other than `guide` and `buy`, the counter
-refuses to start.
-
-| Tool | Does | Must not |
-|---|---|---|
-| `guide` | Match name, brand, category, or SKU. Returns at most 12 rows, in-stock first. | Change stock. |
-| `buy` | Decrement packs and insert a sale, only if `stock >= qty`. | Guess a SKU. Sell twice for one `request_id`. |
-
-Global brands, priced in USD. Money is integer cents. Stock is packs
-(`5 kg` with stock 12 is twelve bags). About 7% of rows are empty on purpose so "we don't have it"
-is a real path.
 
 ## Run
 
 ```bash
-make db
-make phoenix     # message viewer on http://localhost:6006
-.venv/bin/python -m pip install -r requirements.txt   # once
-.venv/bin/python agent/counter.py
+cp .env.example .env            # add the OpenAI key
+.venv/bin/python -m pip install -r requirements.txt
+make db                         # build the shelf
+make phoenix                    # http://localhost:6006
+make run ARGS="--limit 10"      # play, score, log the first ten
+make run ARGS="--limit 10 --ui" # same, and watch it
+.venv/bin/python agent/counter.py   # talk to the counter yourself
 ```
 
-`make serve` is the same MCP process the counter spawns itself. Do not
-run both; two writers on `store/shop.duckdb` lock or corrupt the shelf.
+A run prints its scores and the Phoenix experiment link. Compare runs in
+Phoenix under Datasets → the `conversations-…` dataset → Experiments.
 
-Copy `.env.example` to `.env`. Completions need `OPENROUTER_API_KEY`.
-The model must be in `models.allowlist`. Default is `openrouter/free`,
-which picks a free model at random and only from ones that can call
-tools. The reply names the model that actually answered. It is for
-seeding traffic, never for scores: it switches models between steps of
-one turn. For evals pin `openai/gpt-6-luna` with
-`OPENROUTER_PROVIDER=OpenAI`, so a score is about one model on one
-host.
+## Files
 
-## Floor
+| Path | Is |
+|---|---|
+| `agent/counter.py` | The counter: system prompt, the two tools, one turn. The SDK runs the loop and the MCP client. |
+| `agent/trace.py` | Phoenix wiring. The instrumentor writes model and tool spans; this adds `conversation` and `utterance`. |
+| `floor/conversations.txt` | The customers. `---` starts one; `=` lines say what a good counter sells. |
+| `floor/run.py` | Plays conversations at `--arrival` per minute across `--staff` workers, on a fresh copy of the shelf. |
+| `floor/score.py` | Code scores and the Phoenix experiment upload. |
+| `ui/` | The page `--ui` serves. Opened as a file, it plays a recorded sample. |
+| `store/` | Catalog generator, schema, and the MCP surface (`publish.sql`). |
 
-`make floor` serves the picture at http://127.0.0.1:8787. Staff is how
-many workers pull from the line. Arrivals is how often a new customer
-walks in.
+## The shelf
 
-Three surfaces, one event stream:
+About 2,500 SKUs of global brands, priced in USD as integer cents. Stock
+is packs (`5 kg` with stock 12 is twelve bags). About 7% of rows are
+empty on purpose, so "we don't have it" is a real path.
 
-| Surface | Is | Reads |
+| Tool | Does | Must not |
 |---|---|---|
-| canvas | the room, 448x252 native, scaled by whole numbers | `arrive` `assign` `step` `reply` `leave` |
-| overlay | every word on the picture, as DOM so it stays sharp | the same events |
-| rail | one card per turn, step by step, newest first | `step` `reply` |
+| `guide` | Match name, brand, category or SKU. At most 12 rows, in stock first. | Change stock. |
+| `buy` | Decrement packs and record a sale, only if `stock >= qty`. | Sell twice for one `request_id`. |
 
-Nothing on the page is invented. Token counts are the OpenRouter usage
-block, step times are measured around the calls themselves, and the
-`guide` / `buy` fields are parsed from what DuckDB answered. If a number
-is on screen, an event carried it.
+The model never sees `request_id`; the counter adds it to `buy`, one per
+turn. If the MCP process ever publishes a tool other than these two, the
+counter refuses to start.
 
-The events:
+## Scores
 
-```text
-hello    staff, arrival, model, workers, queue cap, conversations, tally
-config   a slider moved
-arrive   cid, text, turn n of m   queued=true is the door, false a follow-up
-assign   cid, tid, worker, waited   how long they stood in the line
-step     llm.start | llm | tool.start | tool | retry
-reply    text, status, seconds, tokens, served models
-leave    cid walks out
-drop     the line was full
-queue    depth, cap, which workers are busy
-stats    running tally of sold / guide / out, and guide / buy calls
-metrics  tokens per minute and p95, from Phoenix or from this process
-```
+Code, not a judge. Each reads what DuckDB answered, per conversation:
 
-One customer is a whole conversation, not one line. `cid` is stable
-across every line they say, so a follow-up ("the 5 kg, if you have it")
-draws as the same person with the same memory, on the same worker. `tid`
-is one utterance, and is the `request_id` the `buy` tool is idempotent on.
-
-A guide call sweeps the shelves. A sold `buy` puts a bag on the counter
-and the customer carries it out. An `out_of_stock` blinks an empty gap.
-The waterfall in the rail is to scale against the wall clock of the turn,
-so the model call dwarfing the DuckDB call is the first thing you see:
-`guide` is tens of milliseconds, the completion is seconds.
-
-Tool calls take turns on the one DuckDB process. That wait is reported
-apart from the query, as `waited ... on the pipe`, so contention is
-visible instead of hiding inside the tool time.
-
-Phoenix is the second opinion on tokens and p95, not the only one. If it
-is down the page falls back to this process's own completed turns and the
-card says `this floor` instead of `phoenix`.
-
-The page is `ui/index.html` and `ui/shop.js`. Opened as a file, it plays
-a tape that exercises the whole protocol. Served, it follows `/events`.
-One DuckDB process still owns the shelf, so do not run this beside
-`scratch/run_prompts.py`.
-
-`floor/conversations.txt` is the set to record. A `---` starts a new
-customer. Lines after it share a memory. The earlier scratch prompts
-do not.
+| Score | Question |
+|---|---|
+| `answered` | Did every turn get a real reply (not empty, stuck or an error)? |
+| `grounded` | Did every buy use a SKU that `guide` had shown? |
+| `sale_decision` | Sold when it should, held back when it should not? Needs `=`. |
+| `right_items` | Right product, pack and quantity? Needs `=`. |
+| `seconds` | Wall time for the conversation, under the run's load. |
+| `cost_usd` | Tokens at list price (`PRICES` in `score.py`). |
 
 ## Traces
 
-Phoenix lives in `docker-compose.yml` (`arizephoenix/phoenix`,
-container `shopkeeper-phoenix`). `make phoenix` is `docker compose up -d`.
-UI is [http://localhost:6006](http://localhost:6006). The counter posts
-OTLP HTTP to `http://localhost:6006/v1/traces` (`PHOENIX_OTLP` overrides it).
+One trace per conversation in project `PHOENIX_PROJECT`:
 
-The loop, the MCP client and the retries are the OpenAI Agents SDK.
-Spans come from the OpenInference Agents instrumentor: the agent run,
-each model call (`response`) and each tool call (`guide` / `buy`), with
-real timings and errors. It replaces the SDK's own exporter, so nothing
-goes to OpenAI's trace dashboard. `agent/trace.py` adds one span on top,
-`utterance`, because the SDK names its per-step spans `turn`.
-`shopkeeper.outcome` on it is `replied`, `empty` or `stuck` (hit the
-4-call limit). History between turns is the SDK's input list, so a
-follow-up sees the SKUs the last turn found. The model never sees
-`request_id`; the `buy` wrapper adds it. On the floor, `session.id` is the
-customer, so a Phoenix session is one conversation.
-The OpenRouter key is never an attribute. If Phoenix is down, the
-exporter times out in 2 seconds and the sale still goes through.
-`make db` rebuilds the shelf; it does not wipe traces.
+```text
+conversation                     one customer, session.id = customer id
+└─ utterance                     one line: request_id, shopkeeper.outcome
+   └─ Agent workflow             the SDK run (the instrumentor adds two levels)
+      └─ counter                 the agent
+         └─ turn                 one model step
+            ├─ response          the model call: messages, tokens
+            └─ guide / buy       the tool call: arguments, result
+```
 
-## What is not in this cut
-
-- Jev / structured intent before the tool call. The tool schema is the
-  type check for now.
-- A restock queue. Empty shelves come back as `out_of_stock`.
-- More than one writer. Do not open the duckdb file from a second
-  process while `make serve` or the counter is running.
-- Evals. Score the tool call (right SKU, no double sale), not the Hindi.
+`shopkeeper.outcome` is `replied`, `empty` or `stuck` (4 model calls
+without an answer). The last two mark the utterance and its conversation
+as errors, so Phoenix's error chart counts failed turns. The
+instrumentor replaces the SDK's own exporter, so nothing goes to OpenAI's
+trace dashboard. If Phoenix is down, the run still plays and prints its
+scores.

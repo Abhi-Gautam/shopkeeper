@@ -1,14 +1,51 @@
-# Golden set. Plain global English. One customer turn per line.
-# A line of --- starts a new customer, so the next lines share a memory.
+# Plain global English. One customer turn per line.
+# A line of --- starts a new customer; the lines after it share a memory.
 # Some asks are off the shelf on purpose (chargers, fresh produce, a mop).
+#
+# `= name | pack | qty` is what a good counter ends up selling, one line
+# per item. Fields split on " | "; name is a regex, pack `-` means any. `= none` means no sale is
+# right. Conversations without `=` are still played and scored for
+# replies, grounding, time and cost, just not for the sale.
+#
+# The first ten carry outcomes: `floor/run.py --limit 10` scores them.
 
 ---
 A bag of rice, please.
 The 5 kg, if you have it.
+= rice | 5 kg | 1
 ---
 What tea do you have?
 The cheaper black tea, 40 bags.
 And a small pack of cookies with that.
+= black tea | 40 bags | 1
+= cookie|biscuit | - | 1
+---
+Do you sell phone chargers?
+= none
+---
+This says 10 kg of flour. You don't have that, do you?
+Then the largest you do have. Two of them.
+= flour | 5 kg | 2
+---
+Ground coffee, 250 grams. No instant.
+= ground coffee | 250 g | 1
+---
+Onions, potatoes, tomatoes.
+= none
+---
+Just looking, thanks.
+= none
+---
+Is the basmati worth the extra over the cheap rice?
+Then the cheap one, 5 kg.
+= ^(?!.*basmati).*rice | 5 kg | 1
+---
+Butter, 250 grams. If you have the 500, how much more is it?
+The small one.
+= butter | 250 g | 1
+---
+Can I pay later? I'll come by tomorrow.
+= none
 ---
 Soap, toothpaste, and a travel-size shampoo.
 ---
@@ -43,8 +80,6 @@ Ordinary, 5 kg.
 ---
 Whole milk, one litre. And butter, 250 grams.
 ---
-Do you sell phone chargers?
----
 Mozzarella, 125 grams. And yogurt.
 The smaller yogurt.
 ---
@@ -54,15 +89,11 @@ One litre, then.
 Cookies. Whatever is cheapest.
 Two packs.
 ---
-Can I pay later? I'll come by tomorrow.
----
 Coffee, the instant, small jar. And sugar.
 ---
 We are ten people at the office. Coffee and cookies.
 ---
 A mop, a bucket, and floor cleaner.
----
-Just looking, thanks.
 ---
 The rice I bought yesterday was torn. Can you swap it?
 ---
@@ -85,9 +116,6 @@ A big bottle of water. Two, actually.
 ---
 Peanut butter, the small jar. And crackers.
 ---
-This says 10 kg of flour. You don't have that, do you?
-Then the largest you do have. Two of them.
----
 Paper towels. The big pack.
 ---
 I want to spend about 15 dollars on snacks for a train ride. What fits?
@@ -96,8 +124,6 @@ Hand soap, the small bottle.
 ---
 Is there a family pack of laundry detergent, and is it actually cheaper per litre?
 Yes, that one.
----
-Onions, potatoes, tomatoes.
 ---
 One cola, one orange juice. Cold, if you have it.
 ---
@@ -135,9 +161,6 @@ Two kilos of flour, but only if it is the 1 kg pack twice, not a big sack.
 ---
 Bar soap and laundry detergent. Different things, don't mix them up.
 ---
-Is the basmati worth the extra over the cheap rice?
-Then the cheap one, 5 kg.
----
 Microwave popcorn. Two packs.
 ---
 Can you hold a bag of rice for me until this evening?
@@ -152,9 +175,6 @@ I'll take that. One pack.
 Shampoo, the big bottle, not the travel size.
 ---
 One of everything you just listed. No, too much. Just the first two.
----
-Butter, 250 grams. If you have the 500, how much more is it?
-The small one.
 ---
 I need this packed as a gift. Do you have a bag?
 ---
@@ -196,8 +216,6 @@ I changed my mind on the cola. Just the chips.
 ---
 What is about to expire that you would rather sell today?
 I'll take one if it is still fine.
----
-Ground coffee, 250 grams. No instant.
 ---
 A pack of water and a sports drink. Someone is unwell, so quickly.
 ---

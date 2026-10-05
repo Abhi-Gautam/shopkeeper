@@ -1172,7 +1172,7 @@
     function at(time, ev) { t.push({ at: time, ev: ev }); }
 
     at(0.1, { type: "hello", staff: 2, arrival: 4, workers: 3, cap: 8,
-              model: "openrouter/free", conversations: 100 });
+              model: "gpt-6-luna", conversations: 100 });
 
     // c1 — a two line conversation that ends in a sale
     at(0.5, { type: "arrive", cid: "4b1c9a02", tid: null, text: "A bag of rice, please.", turn: 1, turns: 2, queued: true });
@@ -1182,37 +1182,37 @@
 
     at(1.7, { type: "assign", cid: "4b1c9a02", tid: "t1", worker: 0, turn: 1, turns: 2, waited: 1.2 });
     at(1.8, { type: "queue", depth: 2, cap: 8, busy: [0], dropped: 0 });
-    at(1.9, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm.start", step: 1, model: "openrouter/free" });
-    at(3.8, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm", step: 1, model: "qwen/qwen-2.5-72b-instruct:free", seconds: 1.86, prompt_tokens: 712, completion_tokens: 28, wants: ["guide"] });
+    at(1.9, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm.start", step: 1, model: "gpt-6-luna" });
+    at(3.8, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm", step: 1, model: "gpt-6-luna", seconds: 1.86, prompt_tokens: 712, completion_tokens: 28, wants: ["guide"] });
     at(3.85, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "tool.start", step: 1, name: "guide", args: { query: "rice" } });
     at(3.92, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "tool", step: 1, name: "guide", args: { query: "rice" }, seconds: 0.041, waited: 0.004, guide: { rows: 8, in_stock: 7, offered: [] } });
-    at(4.0, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm.start", step: 2, model: "openrouter/free" });
-    at(6.1, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm", step: 2, model: "qwen/qwen-2.5-72b-instruct:free", seconds: 2.08, prompt_tokens: 1180, completion_tokens: 64, wants: [] });
-    at(6.2, { type: "reply", cid: "4b1c9a02", tid: "t1", worker: 0, text: "We have rice: 1 kg for $2.40, 5 kg for $11.20. Which one?", status: "guide", tokens: 1984, seconds: 4.3, served: ["qwen/qwen-2.5-72b-instruct:free"], steps: [] });
+    at(4.0, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm.start", step: 2, model: "gpt-6-luna" });
+    at(6.1, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm", step: 2, model: "gpt-6-luna", seconds: 2.08, prompt_tokens: 1180, completion_tokens: 64, wants: [] });
+    at(6.2, { type: "reply", cid: "4b1c9a02", tid: "t1", worker: 0, text: "We have rice: 1 kg for $2.40, 5 kg for $11.20. Which one?", status: "guide", tokens: 1984, seconds: 4.3, served: ["gpt-6-luna"], steps: [] });
     at(6.3, { type: "stats", turns: 1, sold: 0, guide: 1, out: 0, error: 0, guides: 1, buys: 0, tokens: 1984 });
 
     at(1.9, { type: "assign", cid: "7e33f1aa", tid: "t2", worker: 1, turn: 1, turns: 2, waited: 1.0 });
     at(2.0, { type: "queue", depth: 1, cap: 8, busy: [0, 1], dropped: 0 });
-    at(2.1, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm.start", step: 1, model: "openrouter/free" });
-    at(4.9, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm", step: 1, model: "meta-llama/llama-3.3-70b-instruct:free", seconds: 2.74, prompt_tokens: 706, completion_tokens: 24, wants: ["guide"] });
+    at(2.1, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm.start", step: 1, model: "gpt-6-luna" });
+    at(4.9, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm", step: 1, model: "gpt-6-luna", seconds: 2.74, prompt_tokens: 706, completion_tokens: 24, wants: ["guide"] });
     at(4.95, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "tool.start", step: 1, name: "guide", args: { query: "tea" } });
     at(5.12, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "tool", step: 1, name: "guide", args: { query: "tea" }, seconds: 0.038, waited: 0.112, guide: { rows: 11, in_stock: 9, offered: [] } });
-    at(5.2, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm.start", step: 2, model: "openrouter/free" });
-    at(7.6, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm", step: 2, model: "meta-llama/llama-3.3-70b-instruct:free", seconds: 2.33, prompt_tokens: 1402, completion_tokens: 88, wants: [] });
-    at(7.7, { type: "reply", cid: "7e33f1aa", tid: "t2", worker: 1, text: "Here is the tea we have:\n**Black tea:**\n- Market Basics Black Tea 40 bags — $2.10 (14 left)\n- Lipton Black Tea 40 bags — $2.45 (6 left)\n- Twinings Black Tea 80 bags — $4.60 (21 left)\n**Other:**\n- Twinings Green Tea 25 bags — $2.95 (4 left)\n- Celestial Herbal Tea 20 bags — $3.10 (9 left)", status: "guide", tokens: 2220, seconds: 5.6, served: ["meta-llama/llama-3.3-70b-instruct:free"], steps: [] });
+    at(5.2, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm.start", step: 2, model: "gpt-6-luna" });
+    at(7.6, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm", step: 2, model: "gpt-6-luna", seconds: 2.33, prompt_tokens: 1402, completion_tokens: 88, wants: [] });
+    at(7.7, { type: "reply", cid: "7e33f1aa", tid: "t2", worker: 1, text: "Here is the tea we have:\n**Black tea:**\n- Market Basics Black Tea 40 bags — $2.10 (14 left)\n- Lipton Black Tea 40 bags — $2.45 (6 left)\n- Twinings Black Tea 80 bags — $4.60 (21 left)\n**Other:**\n- Twinings Green Tea 25 bags — $2.95 (4 left)\n- Celestial Herbal Tea 20 bags — $3.10 (9 left)", status: "guide", tokens: 2220, seconds: 5.6, served: ["gpt-6-luna"], steps: [] });
 
     at(8.0, { type: "metrics", tokens_per_min: 4204, p95: 5.6, source: "phoenix" });
 
     // follow-ups: same worker, same memory, a real sale
     at(8.4, { type: "arrive", cid: "4b1c9a02", tid: "t3", text: "The 5 kg, if you have it.", turn: 2, turns: 2, queued: false });
     at(8.5, { type: "assign", cid: "4b1c9a02", tid: "t3", worker: 0, turn: 2, turns: 2, waited: 0 });
-    at(8.6, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm.start", step: 1, model: "openrouter/free" });
-    at(10.5, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm", step: 1, model: "qwen/qwen-2.5-72b-instruct:free", seconds: 1.91, prompt_tokens: 1310, completion_tokens: 42, wants: ["buy"] });
+    at(8.6, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm.start", step: 1, model: "gpt-6-luna" });
+    at(10.5, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm", step: 1, model: "gpt-6-luna", seconds: 1.91, prompt_tokens: 1310, completion_tokens: 42, wants: ["buy"] });
     at(10.55, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "tool.start", step: 1, name: "buy", args: { sku: "GRA-5K-TIL", qty: 1 } });
     at(10.68, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "tool", step: 1, name: "buy", args: { sku: "GRA-5K-TIL", qty: 1 }, seconds: 0.062, waited: 0.008, buy: { status: "sold", sku: "GRA-5K-TIL", qty: 1, price: "11.20", stock_left: 7 } });
-    at(10.8, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm.start", step: 2, model: "openrouter/free" });
-    at(12.4, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm", step: 2, model: "qwen/qwen-2.5-72b-instruct:free", seconds: 1.58, prompt_tokens: 1498, completion_tokens: 52, wants: [] });
-    at(12.5, { type: "reply", cid: "4b1c9a02", tid: "t3", worker: 0, text: "Done: 5 kg Tilda rice, $11.20. Seven bags left.", status: "sold", tokens: 2902, seconds: 3.9, served: ["qwen/qwen-2.5-72b-instruct:free"], steps: [] });
+    at(10.8, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm.start", step: 2, model: "gpt-6-luna" });
+    at(12.4, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm", step: 2, model: "gpt-6-luna", seconds: 1.58, prompt_tokens: 1498, completion_tokens: 52, wants: [] });
+    at(12.5, { type: "reply", cid: "4b1c9a02", tid: "t3", worker: 0, text: "Done: 5 kg Tilda rice, $11.20. Seven bags left.", status: "sold", tokens: 2902, seconds: 3.9, served: ["gpt-6-luna"], steps: [] });
     at(12.6, { type: "stats", turns: 3, sold: 1, guide: 2, out: 0, error: 0, guides: 2, buys: 1, tokens: 7106 });
     at(14.2, { type: "leave", cid: "4b1c9a02" });
     at(14.3, { type: "queue", depth: 1, cap: 8, busy: [1], dropped: 0 });
@@ -1220,17 +1220,17 @@
     // an out of stock path
     at(14.6, { type: "assign", cid: "9ac2d510", tid: "t4", worker: 0, turn: 1, turns: 1, waited: 13.3 });
     at(14.7, { type: "queue", depth: 0, cap: 8, busy: [0, 1], dropped: 0 });
-    at(14.8, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm.start", step: 1, model: "openrouter/free" });
-    at(17.0, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm", step: 1, model: "mistralai/mistral-small-3.2-24b-instruct:free", seconds: 2.18, prompt_tokens: 722, completion_tokens: 31, wants: ["guide"] });
+    at(14.8, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm.start", step: 1, model: "gpt-6-luna" });
+    at(17.0, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm", step: 1, model: "gpt-6-luna", seconds: 2.18, prompt_tokens: 722, completion_tokens: 31, wants: ["guide"] });
     at(17.1, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "tool.start", step: 1, name: "guide", args: { query: "shampoo" } });
     at(17.3, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "tool", step: 1, name: "guide", args: { query: "shampoo" }, seconds: 0.034, waited: 0.191, guide: { rows: 4, in_stock: 0, offered: [] } });
-    at(17.4, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm.start", step: 2, model: "openrouter/free" });
-    at(19.4, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm", step: 2, model: "mistralai/mistral-small-3.2-24b-instruct:free", seconds: 1.94, prompt_tokens: 980, completion_tokens: 36, wants: ["buy"] });
+    at(17.4, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm.start", step: 2, model: "gpt-6-luna" });
+    at(19.4, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm", step: 2, model: "gpt-6-luna", seconds: 1.94, prompt_tokens: 980, completion_tokens: 36, wants: ["buy"] });
     at(19.45, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "tool.start", step: 2, name: "buy", args: { sku: "PER-50-PAN", qty: 1 } });
     at(19.6, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "tool", step: 2, name: "buy", args: { sku: "PER-50-PAN", qty: 1 }, seconds: 0.048, waited: 0.006, buy: { status: "out_of_stock", sku: "PER-50-PAN", qty: 0, price: "3.00", stock_left: 0 } });
-    at(19.7, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm.start", step: 3, model: "openrouter/free" });
-    at(21.3, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm", step: 3, model: "mistralai/mistral-small-3.2-24b-instruct:free", seconds: 1.61, prompt_tokens: 1240, completion_tokens: 58, wants: [] });
-    at(21.4, { type: "reply", cid: "9ac2d510", tid: "t4", worker: 0, text: "The travel-size shampoo is out. I have the soap and toothpaste. Want those?", status: "out", tokens: 3067, seconds: 6.6, served: ["mistralai/mistral-small-3.2-24b-instruct:free"], steps: [] });
+    at(19.7, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm.start", step: 3, model: "gpt-6-luna" });
+    at(21.3, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm", step: 3, model: "gpt-6-luna", seconds: 1.61, prompt_tokens: 1240, completion_tokens: 58, wants: [] });
+    at(21.4, { type: "reply", cid: "9ac2d510", tid: "t4", worker: 0, text: "The travel-size shampoo is out. I have the soap and toothpaste. Want those?", status: "out", tokens: 3067, seconds: 6.6, served: ["gpt-6-luna"], steps: [] });
     at(21.5, { type: "stats", turns: 4, sold: 1, guide: 2, out: 1, error: 0, guides: 3, buys: 2, tokens: 10173 });
     at(21.6, { type: "metrics", tokens_per_min: 6102, p95: 6.6, source: "phoenix" });
 
@@ -1242,23 +1242,23 @@
 
     at(9.6, { type: "arrive", cid: "7e33f1aa", tid: "t5", text: "The cheaper black tea, 40 bags.", turn: 2, turns: 2, queued: false });
     at(9.7, { type: "assign", cid: "7e33f1aa", tid: "t5", worker: 1, turn: 2, turns: 2, waited: 0 });
-    at(9.8, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm.start", step: 1, model: "openrouter/free" });
-    at(12.0, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm", step: 1, model: "meta-llama/llama-3.3-70b-instruct:free", seconds: 2.16, prompt_tokens: 1520, completion_tokens: 38, wants: ["buy"] });
+    at(9.8, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm.start", step: 1, model: "gpt-6-luna" });
+    at(12.0, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm", step: 1, model: "gpt-6-luna", seconds: 2.16, prompt_tokens: 1520, completion_tokens: 38, wants: ["buy"] });
     at(12.05, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "tool.start", step: 1, name: "buy", args: { sku: "COF-40-MKB", qty: 1 } });
     at(12.2, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "tool", step: 1, name: "buy", args: { sku: "COF-40-MKB", qty: 1 }, seconds: 0.057, waited: 0.021, buy: { status: "sold", sku: "COF-40-MKB", qty: 1, price: "2.10", stock_left: 14 } });
-    at(12.3, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm.start", step: 2, model: "openrouter/free" });
-    at(14.0, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm", step: 2, model: "meta-llama/llama-3.3-70b-instruct:free", seconds: 1.64, prompt_tokens: 1690, completion_tokens: 44, wants: [] });
-    at(14.1, { type: "reply", cid: "7e33f1aa", tid: "t5", worker: 1, text: "Black tea, 40 bags, $2.10. Done. 14 boxes left.", status: "sold", tokens: 3292, seconds: 4.2, served: ["meta-llama/llama-3.3-70b-instruct:free"], steps: [] });
+    at(12.3, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm.start", step: 2, model: "gpt-6-luna" });
+    at(14.0, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm", step: 2, model: "gpt-6-luna", seconds: 1.64, prompt_tokens: 1690, completion_tokens: 44, wants: [] });
+    at(14.1, { type: "reply", cid: "7e33f1aa", tid: "t5", worker: 1, text: "Black tea, 40 bags, $2.10. Done. 14 boxes left.", status: "sold", tokens: 3292, seconds: 4.2, served: ["gpt-6-luna"], steps: [] });
     at(16.4, { type: "leave", cid: "7e33f1aa" });
 
     at(16.8, { type: "assign", cid: "c71b8e44", tid: "t6", worker: 1, turn: 1, turns: 3, waited: 7.8 });
-    at(16.9, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm.start", step: 1, model: "openrouter/free" });
-    at(19.9, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm", step: 1, model: "google/gemma-3-27b-it:free", seconds: 2.92, prompt_tokens: 734, completion_tokens: 33, wants: ["guide"] });
+    at(16.9, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm.start", step: 1, model: "gpt-6-luna" });
+    at(19.9, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm", step: 1, model: "gpt-6-luna", seconds: 2.92, prompt_tokens: 734, completion_tokens: 33, wants: ["guide"] });
     at(20.0, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "tool.start", step: 1, name: "guide", args: { query: "oil" } });
     at(20.4, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "tool", step: 1, name: "guide", args: { query: "oil" }, seconds: 0.046, waited: 0.308, guide: { rows: 12, in_stock: 10, offered: [] } });
-    at(20.5, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm.start", step: 2, model: "openrouter/free" });
-    at(23.6, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm", step: 2, model: "google/gemma-3-27b-it:free", seconds: 3.04, prompt_tokens: 1612, completion_tokens: 102, wants: [] });
-    at(23.7, { type: "reply", cid: "c71b8e44", tid: "t6", worker: 1, text: "Sunflower oil: 1 L is $3.40, 3 L is $9.30. The 3 L works out to $3.10 a litre, so that is the better deal.", status: "guide", tokens: 2481, seconds: 6.9, served: ["google/gemma-3-27b-it:free"], steps: [] });
+    at(20.5, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm.start", step: 2, model: "gpt-6-luna" });
+    at(23.6, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm", step: 2, model: "gpt-6-luna", seconds: 3.04, prompt_tokens: 1612, completion_tokens: 102, wants: [] });
+    at(23.7, { type: "reply", cid: "c71b8e44", tid: "t6", worker: 1, text: "Sunflower oil: 1 L is $3.40, 3 L is $9.30. The 3 L works out to $3.10 a litre, so that is the better deal.", status: "guide", tokens: 2481, seconds: 6.9, served: ["gpt-6-luna"], steps: [] });
     at(23.8, { type: "stats", turns: 6, sold: 2, guide: 3, out: 1, error: 0, guides: 4, buys: 3, tokens: 15946 });
     at(24.0, { type: "metrics", tokens_per_min: 7340, p95: 6.9, source: "phoenix" });
     at(23.9, { type: "leave", cid: "9ac2d510" });
@@ -1277,7 +1277,7 @@
     tapeIndex = 0;
     tapeStart = nowSec();
     setLive("tape", "tape · no server");
-    modelEl.textContent = "openrouter/free  ·  recorded sample";
+    modelEl.textContent = "gpt-6-luna  ·  recorded sample";
   }
 
   function tickTape() {
