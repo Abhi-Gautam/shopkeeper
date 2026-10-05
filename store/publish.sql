@@ -9,12 +9,13 @@ LOAD duckdb_mcp;
 
 PRAGMA mcp_publish_tool(
     'guide',
-    'Look up what the shop actually has. Does not change stock. Call this before talking about price, packs, or substitutes, and before buy when the customer has not named a SKU.',
+    'Look up what the shop actually has. Returns one row per item and pack size: the cheapest one in stock, and how many other products share that size (choices). Does not change stock. Call this before talking about price, packs, or substitutes, and before buy when the customer has not named a SKU.',
     'SELECT sku, name, brand, category, pack_label,
             printf(''%.2f'', price_cents / 100.0) AS price_usd,
             printf(''%.2f'', list_cents / 100.0) AS list_usd,
             stock,
-            stock > 0 AS in_stock
+            stock > 0 AS in_stock,
+            count(*) FILTER (WHERE stock > 0) OVER (PARTITION BY item, pack_label) AS choices
      FROM products
      WHERE (
          name ILIKE ''%'' || $query || ''%''
@@ -23,7 +24,8 @@ PRAGMA mcp_publish_tool(
          OR sku ILIKE ''%'' || $query || ''%''
        )
        AND ($category IS NULL OR category = $category)
-     ORDER BY (stock = 0), price_cents
+     QUALIFY row_number() OVER (PARTITION BY item, pack_label ORDER BY (stock = 0), price_cents) = 1
+     ORDER BY (stock = 0), item, pack_qty
      LIMIT LEAST(GREATEST(COALESCE($limit, 8), 1), 12)',
     '{
         "query": {"type": "string", "description": "Words from the customer: item, brand, or SKU"},

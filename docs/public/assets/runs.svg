@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" role="img" aria-labelledby="runs-title runs-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#111">
+<title id="runs-title">Three runs of the shopkeeper</title>
+<desc id="runs-desc">Customers who bought something: 14% in the baseline, 33% with the item list in the prompt, 41% with one row per size. Lines where it said we don't have it: 63%, 8%, 5%. Searches that found nothing: 68%, 3%, 5%.</desc>
+<rect x="24" y="18" width="12" height="12" rx="2" fill="#86b6ef"/>
+<text x="42" y="28.5" fill="#333">Baseline</text>
+<rect x="150" y="18" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="168" y="28.5" fill="#333">Item list in the prompt</text>
+<rect x="350" y="18" width="12" height="12" rx="2" fill="#104281"/>
+<text x="368" y="28.5" fill="#333">One row per size</text>
+<text x="24" y="70" font-weight="600">Customers who bought something</text>
+<path d="M24,82 H98.4 Q102.4,82 102.4,86 V96 Q102.4,100 98.4,100 H24 Z" fill="#86b6ef"/>
+<text x="110.4" y="95.5" fill="#333">14%  <tspan fill="#666" font-size="12">14 of 100</tspan></text>
+<path d="M24,104 H204.8 Q208.8,104 208.8,108 V118 Q208.8,122 204.8,122 H24 Z" fill="#2a78d6"/>
+<text x="216.8" y="117.5" fill="#333">33%  <tspan fill="#666" font-size="12">32 of 98</tspan></text>
+<path d="M24,126 H249.6 Q253.6,126 253.6,130 V140 Q253.6,144 249.6,144 H24 Z" fill="#104281"/>
+<text x="261.6" y="139.5" fill="#333">41%  <tspan fill="#666" font-size="12">41 of 100</tspan></text>
+<text x="24" y="186" font-weight="600">Lines where it said we don't have it</text>
+<path d="M24,198 H372.8 Q376.8,198 376.8,202 V212 Q376.8,216 372.8,216 H24 Z" fill="#86b6ef"/>
+<text x="384.8" y="211.5" fill="#333">63%  <tspan fill="#666" font-size="12">88 of 140</tspan></text>
+<path d="M24,220 H64.8 Q68.8,220 68.8,224 V234 Q68.8,238 64.8,238 H24 Z" fill="#2a78d6"/>
+<text x="76.8" y="233.5" fill="#333">8%  <tspan fill="#666" font-size="12">11 of 137</tspan></text>
+<path d="M24,242 H48.0 Q52.0,242 52.0,246 V256 Q52.0,260 48.0,260 H24 Z" fill="#104281"/>
+<text x="60.0" y="255.5" fill="#333">5%  <tspan fill="#666" font-size="12">7 of 140</tspan></text>
+<text x="24" y="302" font-weight="600">Searches that found nothing</text>
+<path d="M24,314 H400.8 Q404.8,314 404.8,318 V328 Q404.8,332 400.8,332 H24 Z" fill="#86b6ef"/>
+<text x="412.8" y="327.5" fill="#333">68%  <tspan fill="#666" font-size="12">116 of 171</tspan></text>
+<path d="M24,336 H36.8 Q40.8,336 40.8,340 V350 Q40.8,354 36.8,354 H24 Z" fill="#2a78d6"/>
+<text x="48.8" y="349.5" fill="#333">3%  <tspan fill="#666" font-size="12">10 of 302</tspan></text>
+<path d="M24,358 H48.0 Q52.0,358 52.0,362 V372 Q52.0,376 48.0,376 H24 Z" fill="#104281"/>
+<text x="60.0" y="371.5" fill="#333">5%  <tspan fill="#666" font-size="12">15 of 315</tspan></text>
+<line x1="24" y1="82" x2="24" y2="382" stroke="#999" stroke-width="1"/>
+</svg>

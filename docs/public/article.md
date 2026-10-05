@@ -60,6 +60,16 @@ As expected for a first run, things went wrong, and most of it was the search to
 
 Speed and cost are fine for now. The search comes first.
 
+## What changed in the next two runs
+
+I made two changes. First, I put the list of everything the shop sells into the prompt, about 100 item names under their categories, and asked the model to work out every item a customer could mean and search for all of them at once. Second, I changed the search so it returns one row for each item and size, instead of the 12 cheapest products, so a 5 kg bag of rice can actually show up.
+
+![Three runs compared. Customers who bought something went from 14% to 33% to 41%. Lines where the shopkeeper said we don't have it went from 63% to 8% to 5%. Searches that found nothing went from 68% to 3% to 5%.](/media/shopkeeper/runs.svg)
+
+After both changes, 41 of 100 customers bought something, up from 14, and the shopkeeper said we didn't have something in 7 lines instead of 88. Of the six customers with a written order, five got exactly what they asked for, up from none. A line still takes about the same time, around 4.5 seconds, but the 100 customers cost $0.038 instead of $0.021, because the item list goes into every model call.
+
+The item list only works because the shop is small. A store the size of Target would not fit in a prompt, and that is the next experiment.
+
 ---
 
 Checked against Shopkeeper commit [`2cb8293`](https://github.com/Abhi-Gautam/shopkeeper/commit/2cb8293ff5340a1c4c98f470cc5b87579717e0f7). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/run.py), and the [scores](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/score.py).
