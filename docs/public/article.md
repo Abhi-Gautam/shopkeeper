@@ -36,15 +36,11 @@ There are 100 customers, each written as a short conversation in plain English. 
 
 Every run starts with a fresh copy of the shelf, so sales from one run never affect the next one. Customers arrive at a fixed rate, and a fixed number of workers serve them. I can also watch the run as a shop floor, with the queue at the door, the workers, and every model call and tool call as it happens.
 
-Each customer becomes one trace in Phoenix:
+![The shop floor during a run, with customers at the counter, the workers, and the replies as they come in.](/media/shopkeeper/floor.mp4)
 
-```text
-conversation        one customer, with their scores
-└─ utterance        one line they said
-   ├─ Response      a model call, with messages and tokens
-   ├─ guide         what the model searched for and what came back
-   └─ buy           the product, the quantity, and whether it sold
-```
+Each customer becomes one trace in Phoenix. Under the conversation, every line the customer said has its model calls and tool calls, with their timings, tokens, and inputs and outputs. The scores are attached to the conversation.
+
+![One customer in Phoenix. The conversation has one line, two model calls and two guide searches, and the answered, cost and seconds scores.](/media/shopkeeper/phoenix-conversation.png)
 
 The scores are plain code. They check what DuckDB actually did, not how the reply sounds. Did every line get a reply? Did every sale use a product that `guide` had shown? Did it sell when it should have? Was it the right product, size, and quantity? No model is used to grade another model.
 
@@ -84,7 +80,9 @@ The shelf had 13 packs of Mazola Sunflower Oil, 1 litre.
 
 ## Why it does not sell
 
-The model called `guide` 199 times, and 138 of those searches returned nothing.
+The model called `guide` 199 times, and 138 of those searches returned nothing. Here is the first search from the frying oil customer. The model searched for "oil for frying" in the `oil` category, and the shelf sent back an empty table.
+
+![A guide call in Phoenix. The input is the query "oil for frying" with category oil, and the output is only the table header, with no rows.](/media/shopkeeper/phoenix-empty-search.png)
 
 `guide` looks for the whole search text as one exact phrase:
 
