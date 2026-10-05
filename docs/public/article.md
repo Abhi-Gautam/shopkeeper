@@ -30,14 +30,6 @@ Each sale carries a `request_id`. If `buy` is called again with the same id, it 
 
 The model is `gpt-6-luna` from OpenAI, with reasoning set to low, and the OpenAI Agents SDK runs it. For each line a customer says, the model can make at most four calls to search, sell, and reply. It also remembers the whole conversation, including what the tools returned. So when the customer says "The 5 kg, if you have it", the model still knows which rice they were talking about.
 
-## My first measurements were wrong
-
-The first version used free models through OpenRouter. I collected 727 customer lines and read through them.
-
-44% of the replies were empty. Most of these failed in less than a second, before any model had answered. The free models were rate limiting me. The free router also picked a different model for each call, so 412 of the lines were answered by two or more different models. On top of that, every model call and tool call showed up as taking almost no time, because my code recorded each call only after it had finished.
-
-So the data was telling me about rate limits and a random mix of models, not about the shopkeeper. I switched to a single paid model from OpenAI. I also fixed the timing so each call is measured while it runs, and a failed call is now recorded as an error instead of an empty reply.
-
 ## How I watch a run
 
 There are 100 customers, each written as a short conversation in plain English. Some ask for things the shop does not sell, like phone chargers or onions. Some ask if they can pay later.
