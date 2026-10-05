@@ -1,5 +1,5 @@
 DUCKDB ?= duckdb
-DB := store/kirana.duckdb
+DB := store/shop.duckdb
 CSV := store/products.csv
 
 .PHONY: catalog db serve phoenix floor clean

@@ -1,4 +1,4 @@
-# Free OpenRouter models permitted for this experiment.
+# OpenRouter models permitted for this experiment.
 # Checked 2026-10-04: the pinned rows had prompt and completion price "0",
 # and advertised tools plus structured_outputs or response_format.
 # Do not add typesafe/jev-router (dynamic price).
@@ -9,3 +9,9 @@
 openrouter/free
 qwen/qwen3.8-27b:free
 nvidia/nemotron-3-super-120b-a12b:free
+
+# Paid, for evals. Released 2026-09-22. Checked 2026-10-05: $0.10 in /
+# $0.50 out per 1M tokens, cached input $0.01, tools and reasoning on
+# every host. Pin OPENROUTER_PROVIDER=OpenAI with it so a score is about
+# one deployment. About $1 per 5M in + 1M out, before caching.
+openai/gpt-6-luna

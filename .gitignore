@@ -1,5 +1,5 @@
-store/kirana.duckdb
-store/kirana.duckdb.wal
+store/shop.duckdb
+store/shop.duckdb.wal
 store/products.csv
 .env
 .venv/

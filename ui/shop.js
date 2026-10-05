@@ -411,9 +411,9 @@
   // The shopkeeper answers in markdown: a line of talk, then a list of what
   // is on the shelf at what price. A list is not speech. The talk stays in
   // the balloon and the list goes down on the counter as a slip, which is
-  // where a kirana shopkeeper would put it anyway.
+  // where a shopkeeper would put it anyway.
 
-  var PRICE = /\u20b9\s*\d[\d.,]*/;
+  var PRICE = /\$\s*\d[\d.,]*/;
 
   function plain(text) {
     return String(text == null ? "" : text)
@@ -439,8 +439,8 @@
       var isItem = /^[-*\u2022]\s/.test(part);
 
       // The model bolds its headings. That bold is the only reliable tell
-      // between "Paani (1 L pack):" standing over a list and "Bhai, yeh
-      // rahi options:" being said out loud, so read it before plain()
+      // between "Water (1 L bottles):" standing over a list and "Here are
+      // the options:" being said out loud, so read it before plain()
       // throws the markdown away.
       var bold = part.match(/\*\*([^*]+)\*\*|__([^_]+)__|^#{1,6}\s+(.+)$/);
       var head = bold
@@ -1177,7 +1177,7 @@
     // c1 — a two line conversation that ends in a sale
     at(0.5, { type: "arrive", cid: "4b1c9a02", tid: null, text: "A bag of rice, please.", turn: 1, turns: 2, queued: true });
     at(0.9, { type: "arrive", cid: "7e33f1aa", tid: null, text: "What tea do you have?", turn: 1, turns: 2, queued: true });
-    at(1.3, { type: "arrive", cid: "9ac2d510", tid: null, text: "Soap, toothpaste, and a sachet of shampoo.", turn: 1, turns: 1, queued: true });
+    at(1.3, { type: "arrive", cid: "9ac2d510", tid: null, text: "Soap, toothpaste, and a travel-size shampoo.", turn: 1, turns: 1, queued: true });
     at(1.5, { type: "queue", depth: 3, cap: 8, busy: [], dropped: 0 });
 
     at(1.7, { type: "assign", cid: "4b1c9a02", tid: "t1", worker: 0, turn: 1, turns: 2, waited: 1.2 });
@@ -1188,7 +1188,7 @@
     at(3.92, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "tool", step: 1, name: "guide", args: { query: "rice" }, seconds: 0.041, waited: 0.004, guide: { rows: 8, in_stock: 7, offered: [] } });
     at(4.0, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm.start", step: 2, model: "openrouter/free" });
     at(6.1, { type: "step", cid: "4b1c9a02", tid: "t1", worker: 0, kind: "llm", step: 2, model: "qwen/qwen-2.5-72b-instruct:free", seconds: 2.08, prompt_tokens: 1180, completion_tokens: 64, wants: [] });
-    at(6.2, { type: "reply", cid: "4b1c9a02", tid: "t1", worker: 0, text: "Rice hai — 1 kg ₹68, 5 kg ₹310. Kaunsa doon?", status: "guide", tokens: 1984, seconds: 4.3, served: ["qwen/qwen-2.5-72b-instruct:free"], steps: [] });
+    at(6.2, { type: "reply", cid: "4b1c9a02", tid: "t1", worker: 0, text: "We have rice: 1 kg for $2.40, 5 kg for $11.20. Which one?", status: "guide", tokens: 1984, seconds: 4.3, served: ["qwen/qwen-2.5-72b-instruct:free"], steps: [] });
     at(6.3, { type: "stats", turns: 1, sold: 0, guide: 1, out: 0, error: 0, guides: 1, buys: 0, tokens: 1984 });
 
     at(1.9, { type: "assign", cid: "7e33f1aa", tid: "t2", worker: 1, turn: 1, turns: 2, waited: 1.0 });
@@ -1199,7 +1199,7 @@
     at(5.12, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "tool", step: 1, name: "guide", args: { query: "tea" }, seconds: 0.038, waited: 0.112, guide: { rows: 11, in_stock: 9, offered: [] } });
     at(5.2, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm.start", step: 2, model: "openrouter/free" });
     at(7.6, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm", step: 2, model: "meta-llama/llama-3.3-70b-instruct:free", seconds: 2.33, prompt_tokens: 1402, completion_tokens: 88, wants: [] });
-    at(7.7, { type: "reply", cid: "7e33f1aa", tid: "t2", worker: 1, text: "Chai ki yeh options hain:\n**Dust chai:**\n- Society Dust 250 g — ₹42.00 (14 bache)\n- Wagh Bakri Dust 250 g — ₹48.00 (6 bache)\n**Patti chai:**\n- Red Label 250 g — ₹68.00 (21 bache)\n- Taj Mahal 250 g — ₹95.00 (4 bache)\n- Green tea 25 bags — ₹115.00 (9 bache)", status: "guide", tokens: 2220, seconds: 5.6, served: ["meta-llama/llama-3.3-70b-instruct:free"], steps: [] });
+    at(7.7, { type: "reply", cid: "7e33f1aa", tid: "t2", worker: 1, text: "Here is the tea we have:\n**Black tea:**\n- Market Basics Black Tea 40 bags — $2.10 (14 left)\n- Lipton Black Tea 40 bags — $2.45 (6 left)\n- Twinings Black Tea 80 bags — $4.60 (21 left)\n**Other:**\n- Twinings Green Tea 25 bags — $2.95 (4 left)\n- Celestial Herbal Tea 20 bags — $3.10 (9 left)", status: "guide", tokens: 2220, seconds: 5.6, served: ["meta-llama/llama-3.3-70b-instruct:free"], steps: [] });
 
     at(8.0, { type: "metrics", tokens_per_min: 4204, p95: 5.6, source: "phoenix" });
 
@@ -1208,11 +1208,11 @@
     at(8.5, { type: "assign", cid: "4b1c9a02", tid: "t3", worker: 0, turn: 2, turns: 2, waited: 0 });
     at(8.6, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm.start", step: 1, model: "openrouter/free" });
     at(10.5, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm", step: 1, model: "qwen/qwen-2.5-72b-instruct:free", seconds: 1.91, prompt_tokens: 1310, completion_tokens: 42, wants: ["buy"] });
-    at(10.55, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "tool.start", step: 1, name: "buy", args: { sku: "RIC-5K-IND", qty: 1 } });
-    at(10.68, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "tool", step: 1, name: "buy", args: { sku: "RIC-5K-IND", qty: 1 }, seconds: 0.062, waited: 0.008, buy: { status: "sold", sku: "RIC-5K-IND", qty: 1, price: "310.00", stock_left: 7 } });
+    at(10.55, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "tool.start", step: 1, name: "buy", args: { sku: "GRA-5K-TIL", qty: 1 } });
+    at(10.68, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "tool", step: 1, name: "buy", args: { sku: "GRA-5K-TIL", qty: 1 }, seconds: 0.062, waited: 0.008, buy: { status: "sold", sku: "GRA-5K-TIL", qty: 1, price: "11.20", stock_left: 7 } });
     at(10.8, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm.start", step: 2, model: "openrouter/free" });
     at(12.4, { type: "step", cid: "4b1c9a02", tid: "t3", worker: 0, kind: "llm", step: 2, model: "qwen/qwen-2.5-72b-instruct:free", seconds: 1.58, prompt_tokens: 1498, completion_tokens: 52, wants: [] });
-    at(12.5, { type: "reply", cid: "4b1c9a02", tid: "t3", worker: 0, text: "Ho gaya — 5 kg India Gate, ₹310. Saat bag bache hain.", status: "sold", tokens: 2902, seconds: 3.9, served: ["qwen/qwen-2.5-72b-instruct:free"], steps: [] });
+    at(12.5, { type: "reply", cid: "4b1c9a02", tid: "t3", worker: 0, text: "Done: 5 kg Tilda rice, $11.20. Seven bags left.", status: "sold", tokens: 2902, seconds: 3.9, served: ["qwen/qwen-2.5-72b-instruct:free"], steps: [] });
     at(12.6, { type: "stats", turns: 3, sold: 1, guide: 2, out: 0, error: 0, guides: 2, buys: 1, tokens: 7106 });
     at(14.2, { type: "leave", cid: "4b1c9a02" });
     at(14.3, { type: "queue", depth: 1, cap: 8, busy: [1], dropped: 0 });
@@ -1226,11 +1226,11 @@
     at(17.3, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "tool", step: 1, name: "guide", args: { query: "shampoo" }, seconds: 0.034, waited: 0.191, guide: { rows: 4, in_stock: 0, offered: [] } });
     at(17.4, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm.start", step: 2, model: "openrouter/free" });
     at(19.4, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm", step: 2, model: "mistralai/mistral-small-3.2-24b-instruct:free", seconds: 1.94, prompt_tokens: 980, completion_tokens: 36, wants: ["buy"] });
-    at(19.45, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "tool.start", step: 2, name: "buy", args: { sku: "SHM-SAC-CLI", qty: 1 } });
-    at(19.6, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "tool", step: 2, name: "buy", args: { sku: "SHM-SAC-CLI", qty: 1 }, seconds: 0.048, waited: 0.006, buy: { status: "out_of_stock", sku: "SHM-SAC-CLI", qty: 0, price: "3.00", stock_left: 0 } });
+    at(19.45, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "tool.start", step: 2, name: "buy", args: { sku: "PER-50-PAN", qty: 1 } });
+    at(19.6, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "tool", step: 2, name: "buy", args: { sku: "PER-50-PAN", qty: 1 }, seconds: 0.048, waited: 0.006, buy: { status: "out_of_stock", sku: "PER-50-PAN", qty: 0, price: "3.00", stock_left: 0 } });
     at(19.7, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm.start", step: 3, model: "openrouter/free" });
     at(21.3, { type: "step", cid: "9ac2d510", tid: "t4", worker: 0, kind: "llm", step: 3, model: "mistralai/mistral-small-3.2-24b-instruct:free", seconds: 1.61, prompt_tokens: 1240, completion_tokens: 58, wants: [] });
-    at(21.4, { type: "reply", cid: "9ac2d510", tid: "t4", worker: 0, text: "Shampoo sachet khatam hai. Soap aur toothpaste hai — wo de doon?", status: "out", tokens: 3067, seconds: 6.6, served: ["mistralai/mistral-small-3.2-24b-instruct:free"], steps: [] });
+    at(21.4, { type: "reply", cid: "9ac2d510", tid: "t4", worker: 0, text: "The travel-size shampoo is out. I have the soap and toothpaste. Want those?", status: "out", tokens: 3067, seconds: 6.6, served: ["mistralai/mistral-small-3.2-24b-instruct:free"], steps: [] });
     at(21.5, { type: "stats", turns: 4, sold: 1, guide: 2, out: 1, error: 0, guides: 3, buys: 2, tokens: 10173 });
     at(21.6, { type: "metrics", tokens_per_min: 6102, p95: 6.6, source: "phoenix" });
 
@@ -1240,15 +1240,15 @@
     at(15.0, { type: "arrive", cid: "5f0d7a93", tid: null, text: "Sugar, 1 kg. And if the big pack is cheaper, that one.", turn: 1, turns: 2, queued: true });
     at(16.0, { type: "queue", depth: 4, cap: 8, busy: [0, 1], dropped: 0 });
 
-    at(9.6, { type: "arrive", cid: "7e33f1aa", tid: "t5", text: "The cheaper dust, 250 grams.", turn: 2, turns: 2, queued: false });
+    at(9.6, { type: "arrive", cid: "7e33f1aa", tid: "t5", text: "The cheaper black tea, 40 bags.", turn: 2, turns: 2, queued: false });
     at(9.7, { type: "assign", cid: "7e33f1aa", tid: "t5", worker: 1, turn: 2, turns: 2, waited: 0 });
     at(9.8, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm.start", step: 1, model: "openrouter/free" });
     at(12.0, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm", step: 1, model: "meta-llama/llama-3.3-70b-instruct:free", seconds: 2.16, prompt_tokens: 1520, completion_tokens: 38, wants: ["buy"] });
-    at(12.05, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "tool.start", step: 1, name: "buy", args: { sku: "TEA-250-DUS", qty: 1 } });
-    at(12.2, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "tool", step: 1, name: "buy", args: { sku: "TEA-250-DUS", qty: 1 }, seconds: 0.057, waited: 0.021, buy: { status: "sold", sku: "TEA-250-DUS", qty: 1, price: "42.00", stock_left: 14 } });
+    at(12.05, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "tool.start", step: 1, name: "buy", args: { sku: "COF-40-MKB", qty: 1 } });
+    at(12.2, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "tool", step: 1, name: "buy", args: { sku: "COF-40-MKB", qty: 1 }, seconds: 0.057, waited: 0.021, buy: { status: "sold", sku: "COF-40-MKB", qty: 1, price: "2.10", stock_left: 14 } });
     at(12.3, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm.start", step: 2, model: "openrouter/free" });
     at(14.0, { type: "step", cid: "7e33f1aa", tid: "t5", worker: 1, kind: "llm", step: 2, model: "meta-llama/llama-3.3-70b-instruct:free", seconds: 1.64, prompt_tokens: 1690, completion_tokens: 44, wants: [] });
-    at(14.1, { type: "reply", cid: "7e33f1aa", tid: "t5", worker: 1, text: "Dust chai 250 g, ₹42. Rakh di — 14 pack bache.", status: "sold", tokens: 3292, seconds: 4.2, served: ["meta-llama/llama-3.3-70b-instruct:free"], steps: [] });
+    at(14.1, { type: "reply", cid: "7e33f1aa", tid: "t5", worker: 1, text: "Black tea, 40 bags, $2.10. Done. 14 boxes left.", status: "sold", tokens: 3292, seconds: 4.2, served: ["meta-llama/llama-3.3-70b-instruct:free"], steps: [] });
     at(16.4, { type: "leave", cid: "7e33f1aa" });
 
     at(16.8, { type: "assign", cid: "c71b8e44", tid: "t6", worker: 1, turn: 1, turns: 3, waited: 7.8 });
@@ -1258,7 +1258,7 @@
     at(20.4, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "tool", step: 1, name: "guide", args: { query: "oil" }, seconds: 0.046, waited: 0.308, guide: { rows: 12, in_stock: 10, offered: [] } });
     at(20.5, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm.start", step: 2, model: "openrouter/free" });
     at(23.6, { type: "step", cid: "c71b8e44", tid: "t6", worker: 1, kind: "llm", step: 2, model: "google/gemma-3-27b-it:free", seconds: 3.04, prompt_tokens: 1612, completion_tokens: 102, wants: [] });
-    at(23.7, { type: "reply", cid: "c71b8e44", tid: "t6", worker: 1, text: "1 L sunflower ₹142, 5 L ₹655 — 5 L mein per litre ₹131, wahi sasta.", status: "guide", tokens: 2481, seconds: 6.9, served: ["google/gemma-3-27b-it:free"], steps: [] });
+    at(23.7, { type: "reply", cid: "c71b8e44", tid: "t6", worker: 1, text: "Sunflower oil: 1 L is $3.40, 3 L is $9.30. The 3 L works out to $3.10 a litre, so that is the better deal.", status: "guide", tokens: 2481, seconds: 6.9, served: ["google/gemma-3-27b-it:free"], steps: [] });
     at(23.8, { type: "stats", turns: 6, sold: 2, guide: 3, out: 1, error: 0, guides: 4, buys: 3, tokens: 15946 });
     at(24.0, { type: "metrics", tokens_per_min: 7340, p95: 6.9, source: "phoenix" });
     at(23.9, { type: "leave", cid: "9ac2d510" });

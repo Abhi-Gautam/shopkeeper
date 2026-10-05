@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Thin kirana counter.
+"""Thin grocery counter.
 
 The model only sees two tools, both owned by the DuckDB MCP process:
   guide  read stock, prices, substitutes
@@ -15,23 +15,23 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 import uuid
 from pathlib import Path
 
-from trace import flush, llm_span, start as start_trace, tool_span, turn_span
+import openai
+
+from trace import flush, start as start_trace, tool_span, turn_span
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = ROOT / "models.allowlist"
-DB = ROOT / "store" / "kirana.duckdb"
+DB = ROOT / "store" / "shop.duckdb"
 PUBLISH = ROOT / "store" / "publish.sql"
 
-SYSTEM = """You are the counter at a small Indian kirana.
-Speak the way the customer speaks. Short. Prices come only from tool results, in INR.
+SYSTEM = """You are the counter at a small neighborhood grocery store.
+Reply in plain English. Short. Prices come only from tool results, in USD.
 
 You have two tools and no others:
-- guide: look up what is actually on the shelf. Call this before you name a price, a pack, or a substitute. Also call it when the request is vague ("something for tea", "atta kaunsa better").
+- guide: look up what is actually on the shelf. Call this before you name a price, a pack, or a substitute. Also call it when the request is vague ("something for breakfast", "which flour is better").
 - buy: sell only when the customer has asked to buy AND you have a SKU from guide. Never invent a SKU. Pass that SKU, the pack count, and the request_id you were given.
 
 If guide says in_stock is false, do not call buy. Offer another row from the same guide result, or say you will note it.
@@ -154,42 +154,91 @@ class Store:
         self.proc.terminate()
 
 
-def complete(model, messages, tools):
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    if not key:
-        raise SystemExit("OPENROUTER_API_KEY is unset. Copy .env.example to .env.")
-    body = {
-        "model": model,
-        "messages": messages,
-        "tools": tools,
-        "temperature": 0.2,
-        "max_tokens": 400,
-    }
-    request = urllib.request.Request(
-        os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-        + "/chat/completions",
-        data=json.dumps(body).encode(),
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": os.environ.get("OPENROUTER_HTTP_REFERER", "http://localhost"),
-            "X-Title": os.environ.get("OPENROUTER_APP_TITLE", "shopkeeper"),
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            payload = json.load(response)
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")
-        raise SystemExit(f"openrouter {exc.code}: {detail[:500]}") from exc
+# Worth another try at the same call. Anything else is a bug or a bad key.
+RETRY_ON = {408, 429, 500, 502, 503, 504}
+ATTEMPTS = 4
+
+
+class OpenRouterError(RuntimeError):
+    """A model call that failed for good. The text starts "openrouter <code>"."""
+
+
+_client = None
+
+
+def client():
+    global _client
+    if _client is None:
+        key = os.environ.get("OPENROUTER_API_KEY", "")
+        if not key:
+            raise SystemExit("OPENROUTER_API_KEY is unset. Copy .env.example to .env.")
+        _client = openai.OpenAI(
+            api_key=key,
+            base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+            default_headers={
+                "HTTP-Referer": os.environ.get("OPENROUTER_HTTP_REFERER", "http://localhost"),
+                "X-Title": os.environ.get("OPENROUTER_APP_TITLE", "shopkeeper"),
+            },
+            timeout=60,
+            # Retries live in complete(), so each attempt is its own span.
+            max_retries=0,
+        )
+    return _client
+
+
+def routing():
+    """OpenRouter-only body fields. A pinned provider keeps a score about one
+    deployment of one model, not whichever host answered first."""
+    extra = {}
+    provider = os.environ.get("OPENROUTER_PROVIDER")
+    if provider:
+        extra["provider"] = {"order": [provider], "allow_fallbacks": False}
+    effort = os.environ.get("OPENROUTER_REASONING_EFFORT")
+    if effort:
+        extra["reasoning"] = {"effort": effort}
+    return extra
+
+
+def complete(model, messages, tools, on_retry=None):
+    """One model call, retried in place on 429, 5xx and timeouts.
+
+    The retry stays inside the turn: same messages, same request_id, and
+    every failed attempt is an error span next to the one that worked.
+    """
+    wait = 4
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            response = client().chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=tools,
+                temperature=0.2,
+                max_tokens=400,
+                extra_body=routing(),
+            )
+            break
+        except (openai.APIStatusError, openai.APITimeoutError,
+                openai.APIConnectionError) as exc:
+            code = getattr(exc, "status_code", None)
+            if (code is not None and code not in RETRY_ON) or attempt == ATTEMPTS:
+                raise OpenRouterError(
+                    f"openrouter {code or 'timeout'}: {str(exc)[:500]}"
+                ) from exc
+            if on_retry:
+                on_retry(attempt, f"{code or 'timeout'}: {str(exc)[:120]}")
+            time.sleep(wait)
+            wait = min(wait * 2, 30)
+    if not response.choices:
+        raise OpenRouterError("openrouter 200: no choices in the response")
+    message = response.choices[0].message.model_dump(exclude_none=True)
+    usage = response.usage.model_dump() if response.usage else {}
     # openrouter/free rewrites this to the model that actually answered.
-    served = payload.get("model") or model
-    return payload["choices"][0]["message"], payload.get("usage") or {}, served
+    served = response.model or model
+    return message, usage, served
 
 
 def turn(store, tracer, model, tools, history, utterance, request_id,
-         served=None, watch=None):
+         served=None, watch=None, session=None):
     """One utterance in, one reply out.
 
     `watch`, if given, is called with a dict per model call and per tool
@@ -202,23 +251,28 @@ def turn(store, tracer, model, tools, history, utterance, request_id,
         {"role": "system", "content": f"buy request_id for this turn: {request_id}"},
         *history,
     ]
-    span = turn_span(tracer, request_id, utterance)
-    span.set_attribute("shopkeeper.requested_model", model)
     if served is None:
         served = []
     try:
-        return _turn(
-            store, tracer, span, model, tools, history, messages, request_id,
-            served, watch,
-        )
+        with turn_span(tracer, request_id, utterance, session) as span:
+            span.set_attribute("shopkeeper.requested_model", model)
+            try:
+                text, outcome = _turn(
+                    store, tracer, model, tools, history, messages,
+                    request_id, served, watch,
+                )
+            finally:
+                if served:
+                    span.set_attribute("shopkeeper.served_models", ",".join(served))
+            # replied, empty (model said nothing) or stuck (ran out of steps).
+            span.set_attribute("shopkeeper.outcome", outcome)
+            span.set_attribute("output.value", text[:4000])
+            return text
     finally:
-        if served:
-            span.set_attribute("shopkeeper.served_models", ",".join(served))
-        span.end()
         flush()
 
 
-def _turn(store, tracer, span, model, tools, history, messages, request_id,
+def _turn(store, tracer, model, tools, history, messages, request_id,
           served, watch=None):
     def tell(event):
         if watch:
@@ -243,10 +297,15 @@ def _turn(store, tracer, span, model, tools, history, messages, request_id,
         llm_row = row()
         tell({"kind": "llm.start", "step": step, "row": llm_row, "model": model})
         began = time.monotonic()
-        message, usage, answered_by = complete(model, messages, tools)
+
+        def retried(attempt, why, step=step):
+            tell({"kind": "retry", "step": step,
+                  "row": f"retry{step}.{attempt}",
+                  "attempt": attempt, "why": why})
+
+        message, usage, answered_by = complete(model, messages, tools, retried)
         seconds = time.monotonic() - began
         served.append(answered_by)
-        llm_span(tracer, span, answered_by, messages, message, usage)
         tool_calls = message.get("tool_calls") or []
         tell({
             "kind": "llm",
@@ -261,8 +320,7 @@ def _turn(store, tracer, span, model, tools, history, messages, request_id,
         if not tool_calls:
             text = message.get("content") or ""
             history.append({"role": "assistant", "content": text})
-            span.set_attribute("output.value", text[:4000])
-            return text
+            return text, "replied" if text.strip() else "empty"
         messages.append({
             "role": "assistant",
             "content": message.get("content"),
@@ -283,12 +341,13 @@ def _turn(store, tracer, span, model, tools, history, messages, request_id,
                   "name": name, "args": arguments})
             store.watch.waited = 0.0
             began = time.monotonic()
-            result = store.call(name, arguments)
+            with tool_span(tracer, name, arguments) as span:
+                result = store.call(name, arguments)
+                span.set_attribute("output.value", (result or "")[:4000])
             seconds = time.monotonic() - began
             watched = getattr(store.watch, "calls", None)
             if watched is not None:
                 watched.append({"name": name, "result": result})
-            tool_span(tracer, span, name, arguments, result)
             tell({
                 "kind": "tool",
                 "step": step,
@@ -304,9 +363,7 @@ def _turn(store, tracer, span, model, tools, history, messages, request_id,
                 "tool_call_id": call.get("id", name),
                 "content": result,
             })
-    text = "Counter is stuck in tools. Say it again, shorter."
-    span.set_attribute("output.value", text)
-    return text
+    return "Counter is stuck in tools. Say it again, shorter.", "stuck"
 
 
 def main():

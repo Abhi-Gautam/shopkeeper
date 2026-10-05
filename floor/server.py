@@ -119,7 +119,7 @@ def guide_fields(result):
             in_stock += 1
         label = str(row.get("name") or "").strip()
         pack = str(row.get("pack_label") or "").strip()
-        price = str(row.get("price_inr") or "").strip()
+        price = str(row.get("price_usd") or "").strip()
         if label:
             names.append({"name": label, "pack": pack, "price": price,
                           "stock": _int(row.get("stock")),
@@ -153,7 +153,7 @@ def buy_fields(result):
             "status": str(row.get("status") or "").strip() or "unknown",
             "sku": str(row.get("sku") or "").strip(),
             "qty": _int(row.get("qty_sold")),
-            "price": str(row.get("price_inr") or "").strip(),
+            "price": str(row.get("price_usd") or "").strip(),
             "stock_left": _int(row.get("stock_left")),
         }
     text = (result or "").lower()
@@ -336,28 +336,16 @@ def serve_one(shop, worker, cid, tid, ask, history):
             steps.append(dict(out))
         shop.emit(out)
 
-    for attempt in range(4):
-        try:
-            reply = counter.turn(
-                shop.store, shop.tracer, shop.model, shop.tools,
-                history, ask, tid, served, watch,
-            )
-            break
-        except BaseException as exc:
-            text = str(exc).lower()
-            if "duckdb" in text or "mcp server exited" in text:
-                raise
-            if "429" not in text and "timeout" not in text and "timed out" not in text:
-                reply = "One moment."
-                break
-            shop.emit({"type": "step", "cid": cid, "tid": tid, "worker": worker,
-                       "kind": "retry", "row": "retry" + str(attempt + 1),
-                       "attempt": attempt + 1,
-                       "why": str(exc)[:120]})
-            time.sleep(min(8 * (attempt + 1), 30))
-            history[:] = []
-    else:
-        reply = reply or "One moment."
+    # 429s and timeouts are retried inside the model call, so the customer
+    # keeps their history and Phoenix keeps one turn per utterance. What
+    # reaches here has already failed for good.
+    try:
+        reply = counter.turn(
+            shop.store, shop.tracer, shop.model, shop.tools,
+            history, ask, tid, served, watch, session=cid,
+        )
+    except counter.OpenRouterError:
+        reply = "One moment."
 
     seconds = round(time.monotonic() - started, 2)
     tokens = sum(
@@ -500,7 +488,7 @@ def phoenix_metrics():
             continue
         lat.append((b - a).total_seconds())
     for span in spans:
-        if span.get("name") != "llm":
+        if span.get("span_kind") != "LLM":
             continue
         attrs = span.get("attributes") or {}
         tokens += int(attrs.get("llm.token_count.prompt") or 0)

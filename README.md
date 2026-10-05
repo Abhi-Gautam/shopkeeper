@@ -1,6 +1,6 @@
 # Shopkeeper
 
-A kirana counter on hosted free-tier inference. DuckDB is the shelf.
+A neighborhood grocery counter on hosted inference. DuckDB is the shelf.
 The model may only guide or buy. Jev and evals are later; the typed
 boundary is already the two tool schemas.
 
@@ -11,14 +11,14 @@ load and the counter loop are scaffolding.
 
 ```text
 customer text
-  -> agent/counter.py          OpenRouter free model, two tools only
+  -> agent/counter.py          OpenRouter model, two tools only
        guide  -> DuckDB MCP    read, markdown, no stock change
        buy    -> DuckDB MCP    one transaction, request_id is idempotent
   -> reply
          traces -> Phoenix :6006
 ```
 
-One DuckDB process owns `store/kirana.duckdb` and speaks MCP on stdin
+One DuckDB process owns `store/shop.duckdb` and speaks MCP on stdin
 as newline-delimited JSON. Built-in SQL tools are off. If the server
 ever publishes anything other than `guide` and `buy`, the counter
 refuses to start.
@@ -28,8 +28,8 @@ refuses to start.
 | `guide` | Match name, brand, category, or SKU. Returns at most 12 rows, in-stock first. | Change stock. |
 | `buy` | Decrement packs and insert a sale, only if `stock >= qty`. | Guess a SKU. Sell twice for one `request_id`. |
 
-Money is integer paise. Stock is packs (`5 kg` with stock 12 is twelve
-bags). About 8% of rows are empty on purpose so "we don't have it"
+Global brands, priced in USD. Money is integer cents. Stock is packs
+(`5 kg` with stock 12 is twelve bags). About 7% of rows are empty on purpose so "we don't have it"
 is a real path.
 
 ## Run
@@ -42,13 +42,16 @@ make phoenix     # message viewer on http://localhost:6006
 ```
 
 `make serve` is the same MCP process the counter spawns itself. Do not
-run both; two writers on `store/kirana.duckdb` lock or corrupt the shelf.
+run both; two writers on `store/shop.duckdb` lock or corrupt the shelf.
 
 Copy `.env.example` to `.env`. Completions need `OPENROUTER_API_KEY`.
 The model must be in `models.allowlist`. Default is `openrouter/free`,
 which picks a free model at random and only from ones that can call
-tools. The reply names the model that actually answered. Pin a `:free`
-id in `.env` when a score has to be about one model.
+tools. The reply names the model that actually answered. It is for
+seeding traffic, never for scores: it switches models between steps of
+one turn. For evals pin `openai/gpt-6-luna` with
+`OPENROUTER_PROVIDER=OpenAI`, so a score is about one model on one
+host.
 
 ## Floor
 
@@ -120,8 +123,15 @@ container `shopkeeper-phoenix`). `make phoenix` is `docker compose up -d`.
 UI is [http://localhost:6006](http://localhost:6006). The counter posts
 OTLP HTTP to `http://localhost:6006/v1/traces` (`PHOENIX_OTLP` overrides it).
 
-Each turn is one agent span with child `llm` and `tool.guide` /
-`tool.buy` spans. Messages and token counts are on the `llm` span.
+Each turn is one agent span with child `ChatCompletion` and
+`tool.guide` / `tool.buy` spans. The model spans come from the
+OpenInference OpenAI instrumentor, which times the real request and
+marks a failed one as an error; `agent/trace.py` only writes the turn
+and the tool spans, because those go over our own MCP pipe. A 429 or
+timeout is retried inside the turn, so every failed attempt is a red
+span beside the one that worked. `shopkeeper.outcome` on the turn is
+`replied`, `empty` or `stuck`. On the floor, `session.id` is the
+customer, so a Phoenix session is one conversation.
 The OpenRouter key is never an attribute. If Phoenix is down, the
 exporter times out in 2 seconds and the sale still goes through.
 `make db` rebuilds the shelf; it does not wipe traces.

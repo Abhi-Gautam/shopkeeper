@@ -1,64 +1,64 @@
-# Golden set. English. One customer turn per line.
+# Golden set. Plain global English. One customer turn per line.
 # A line of --- starts a new customer, so the next lines share a memory.
-# The first 377 were one product and no memory. This set is the one to record.
+# Some asks are off the shelf on purpose (chargers, fresh produce, a mop).
 
 ---
 A bag of rice, please.
 The 5 kg, if you have it.
 ---
 What tea do you have?
-The cheaper dust, 250 grams.
-And a small pack of biscuits with that.
+The cheaper black tea, 40 bags.
+And a small pack of cookies with that.
 ---
-Soap, toothpaste, and a sachet of shampoo.
+Soap, toothpaste, and a travel-size shampoo.
 ---
 I need oil for frying. Which one is the better deal?
 The 1 litre.
-Actually, make it the 5 litre if the price is close.
+Actually, make it the 3 litre if the price is close.
 ---
 Do you have eggs?
 ---
 Basmati rice, one kilo. And salt.
 ---
-Something for tea. I have guests.
-Biscuits, not the sweet drink.
+Something to serve with coffee. I have guests.
+Cookies, not chocolate.
 ---
 Sugar, 1 kg. And if the big pack is cheaper, that one.
 ---
-Is the ghee in stock?
-The half litre.
+Is the extra virgin olive oil in stock?
+The 500 ml.
 No, leave it. Too much.
 ---
-Detergent, the 1 kg. And a dishwash bar.
+Laundry detergent, the 1 litre. And dish soap.
 ---
 My child wants chips and a cola.
 The small chips. Two of those.
 ---
-Red chilli, turmeric, and cumin. The small packs.
+Paprika, turmeric, and cumin. The small packs.
 ---
 A loaf of bread, please.
 ---
 Which rice is cheaper, basmati or the ordinary one?
 Ordinary, 5 kg.
 ---
-Milk, the full cream, one litre. And butter, 100 grams.
+Whole milk, one litre. And butter, 250 grams.
 ---
 Do you sell phone chargers?
 ---
-Paneer, 200 grams. And curd.
-The smaller curd.
+Mozzarella, 125 grams. And yogurt.
+The smaller yogurt.
 ---
-I asked for mustard oil last time and you were out. Is it in now?
+I asked for canola oil last time and you were out. Is it in now?
 One litre, then.
 ---
-Biscuits. Whatever is cheapest.
+Cookies. Whatever is cheapest.
 Two packs.
 ---
-Can I get this on credit?
+Can I pay later? I'll come by tomorrow.
 ---
 Coffee, the instant, small jar. And sugar.
 ---
-We are ten people at the office. Tea and biscuits.
+We are ten people at the office. Coffee and cookies.
 ---
 A mop, a bucket, and floor cleaner.
 ---
@@ -66,116 +66,116 @@ Just looking, thanks.
 ---
 The rice I bought yesterday was torn. Can you swap it?
 ---
-Lentils. Toor if you have it, otherwise whatever is in.
+Lentils. Red if you have them, otherwise whatever is in.
 One kilo.
 ---
-Cashews, 100 grams. Almonds too, same size.
+Almonds, 200 grams. Raisins too.
 ---
-What closes first, the oil or the ghee? I only need one.
-Oil, 1 litre.
+Which runs out first, the olive oil or the sunflower oil? I only need one.
+Sunflower, 1 litre.
 ---
-Three soaps. The cheapest.
+Three bars of soap. The cheapest.
 ---
 Do you deliver?
 ---
-Poha for breakfast, and suji.
-500 grams of each.
+Oats for breakfast, and pancake mix.
+The smallest of each.
 ---
 A big bottle of water. Two, actually.
 ---
-Pickle, mango, the small jar. And papad.
+Peanut butter, the small jar. And crackers.
 ---
 This says 10 kg of flour. You don't have that, do you?
 Then the largest you do have. Two of them.
 ---
-Matchboxes. A pack.
+Paper towels. The big pack.
 ---
-I want to spend about 200 on snacks for a train. What fits?
+I want to spend about 15 dollars on snacks for a train ride. What fits?
 ---
-Hair oil, the small bottle.
+Hand soap, the small bottle.
 ---
-Is there a family pack of detergent, and is it actually cheaper per kilo?
+Is there a family pack of laundry detergent, and is it actually cheaper per litre?
 Yes, that one.
 ---
 Onions, potatoes, tomatoes.
 ---
-One cola, one mango drink. Cold, if you have it.
+One cola, one orange juice. Cold, if you have it.
 ---
 How late are you open?
 ---
-Ghee, 1 litre. If that is out, the half litre, two of them.
+Olive oil, 1 litre. If that is out, the 500 ml, two of them.
 ---
-A gift. Something small and sweet, under 100.
+A gift. Something small and sweet, under 10 dollars.
 ---
 The other one. Not the one you just said.
 ---
-Salt, sugar, tea, oil. The usual monthly bag.
-The 5 kg sugar if it is there.
+Salt, sugar, tea, oil. The usual monthly shop.
+The 2 kg sugar if it is there.
 ---
-Do you have a written bill?
+Do you have a printed receipt?
 ---
-Noodles, four packs. And the cheese if you sell it, which I doubt.
+Instant noodles, four packs. And cheese if you sell it, which I doubt.
 ---
-Coconut oil or mustard oil for cooking, which lasts longer?
-Mustard, 1 litre.
+Olive oil or sunflower oil for frying, which is the better pick?
+Sunflower, 1 litre.
 ---
-I only have a 500 note.
+I only have a 100 dollar bill.
 ---
-Floor cleaner, 1 litre. And phenyl if the cleaner is out.
+All-purpose cleaner. And bleach if the cleaner is out.
 ---
-What would you pick for a plain dal, and what does a kilo cost?
+What would you pick for a simple lentil soup, and what does a kilo cost?
 That one. One kilo.
 ---
-Raisins, 100 grams. For a pudding, so also suji and a little ghee.
-The small ghee.
+Raisins, for a pudding. So also brown sugar and a little butter.
+The small butter.
 ---
 Sorry, wrong shop.
 ---
 Two kilos of flour, but only if it is the 1 kg pack twice, not a big sack.
 ---
-Bath soap and a detergent bar. Different things, don't mix them up.
+Bar soap and laundry detergent. Different things, don't mix them up.
 ---
 Is the basmati worth the extra over the cheap rice?
 Then the cheap one, 5 kg.
 ---
-A coil for mosquitoes. Two packs.
+Microwave popcorn. Two packs.
 ---
 Can you hold a bag of rice for me until this evening?
 ---
-Instant coffee, 50 grams. And tea dust as well, someone in the house drinks that.
+Instant coffee, 50 grams. And black tea bags as well, someone in the house drinks that.
 ---
 The oil is leaking on this one. Another bottle.
 ---
 What is the cheapest thing I can make breakfast from, that you actually have?
 I'll take that. One pack.
 ---
-Shampoo, the big bottle, not the sachet.
+Shampoo, the big bottle, not the travel size.
 ---
 One of everything you just listed. No, too much. Just the first two.
 ---
-Butter, 100 grams. If you have the 500, how much more is it?
+Butter, 250 grams. If you have the 500, how much more is it?
 The small one.
 ---
 I need this packed as a gift. Do you have a bag?
 ---
-Green chilli, ginger, coriander leaves.
+Fresh basil, ginger, and lemons.
 ---
 Rice, 1 kg. No, 5 kg. Sorry.
 ---
-Which biscuit do kids actually finish, and what is the price?
+Which cookie do kids actually finish, and what is the price?
 Two of those.
 ---
-A tin of ghee for a wedding. The largest.
+Olive oil for a big party. The largest bottle.
 ---
 Can you check the date on the milk before you give it?
 The one litre.
 ---
-Nothing else, that's the lot. What do I owe?
+Nothing else, that's everything. What do I owe?
 ---
-Dishwash, the bigger bar. And a scrub if you sell one.
+Dish soap, the bigger bottle. And a sponge if you sell one.
 ---
-Tea leaves or tea dust, which is the better deal per cup?
-Dust, 250 grams.
+Black tea, the 40 or the 80 bags, which is the better deal per cup?
+The 80, then.
 ---
 I will take the same as the person before me.
 ---
@@ -185,49 +185,49 @@ The small lentils.
 Is the 10 kg rice in stock, and can one person carry it?
 Then 5 kg.
 ---
-A small incense pack, and matches.
+Trash bags, and a sponge.
 ---
 Do you have a loyalty card or just a better price if I buy two?
 Two of the cheap soap, then.
 ---
-Yogurt, 1 kg. And if it is out, the small cups, three of them.
+Greek yogurt, 1 kg. And if it is out, the small cups.
 ---
 I changed my mind on the cola. Just the chips.
 ---
 What is about to expire that you would rather sell today?
 I'll take one if it is still fine.
 ---
-Filter coffee, 200 grams. No instant.
+Ground coffee, 250 grams. No instant.
 ---
-A pack of water and a glucose drink. Someone is unwell, so quickly.
+A pack of water and a sports drink. Someone is unwell, so quickly.
 ---
 Can I return the soap? It is the wrong one.
 The other brand, then. One.
 ---
-Show me the oils under 200 for a litre.
+Show me the oils under 5 dollars for a litre.
 The cheapest of those.
 ---
-I have a list: rice 5 kg, toor dal 1 kg, mustard oil 1 litre, sugar 1 kg, salt, tea 250 grams.
+I have a list: rice 5 kg, red lentils 1 kg, olive oil 1 litre, sugar 1 kg, salt, black tea 80 bags.
 Skip the oil. The rest.
 ---
 Just tell me if you have bread. Yes or no.
 ---
-The large detergent. And don't give me the bar, I asked for powder.
+The large laundry detergent. And don't give me dish soap, I asked for laundry.
 ---
-What do you recommend when someone asks for "something for tea" and doesn't say more?
-Fine. Tea and biscuits. One each.
+What do you recommend when someone asks for "something for breakfast" and doesn't say more?
+Fine. Corn flakes and milk. One each.
 ---
-Namkeen, 200 grams. Two packs, different kinds if you have them.
+Chips, two bags. Different kinds if you have them.
 ---
 Is this price the same as last week?
 ---
-One kilo of the dal you have the most of.
+One kilo of the lentils you have the most of.
 ---
 I want the fancy rice and the cheap rice, one kilo of each, so I can compare at home.
 ---
-Mosquito coil, incense, and matches. That is a set, please treat it as one order.
+Trash bags, sponges, and bleach. That is a set, please treat it as one order.
 ---
-Do you cut a pack open, or only whole packs?
+Do you open a pack and sell part of it, or only whole packs?
 Then the smallest flour.
 ---
 A bottle of water. No, two. No, one. Sorry.
@@ -236,9 +236,9 @@ Which of the soaps is the better deal, and do you have three of that one?
 Yes, three.
 ---
 I am buying for a neighbour who only wrote "oil". What should I ask them?
-Mustard, 1 litre, if I have to choose now.
+Sunflower, 1 litre, if I have to choose now.
 ---
-Paneer and butter. Amul if you have it, otherwise whatever is in.
+Cream cheese and butter. Kerrygold if you have it, otherwise whatever is in.
 ---
 Last question: are you cheaper than the shop down the road?
 Then just the salt. One kilo.

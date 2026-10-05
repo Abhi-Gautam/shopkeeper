@@ -1,13 +1,20 @@
 """Send each counter turn to Phoenix. A dead collector must not stop a sale.
 
-Spans follow OpenInference names so the Phoenix UI shows the messages,
-not a pile of unnamed spans. The OpenRouter key is never an attribute.
+Model calls are traced by the OpenInference OpenAI instrumentor. It opens
+the span before the request and closes it after, records messages, tool
+calls, tokens and the model that answered, and marks a 429 as an error.
+This file only adds what no library can see: the turn around those calls
+and the two DuckDB tools, which go over our own MCP pipe.
+
+The OpenRouter key is never an attribute.
 """
 
 import json
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
+from openinference.instrumentation.openai import OpenAIInstrumentor
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
@@ -28,6 +35,7 @@ def start():
         BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, timeout=2))
     )
     trace.set_tracer_provider(provider)
+    OpenAIInstrumentor().instrument(tracer_provider=provider)
     return trace.get_tracer("shopkeeper")
 
 
@@ -38,63 +46,28 @@ def flush():
         force(timeout_millis=2000)
 
 
-def text_of(message):
-    content = message.get("content")
-    if isinstance(content, str) and content:
-        return content
-    calls = message.get("tool_calls") or []
-    if not calls:
-        return content if isinstance(content, str) else ""
-    parts = []
-    for call in calls:
-        fn = call.get("function") or {}
-        parts.append(f"{fn.get('name')}({fn.get('arguments')})")
-    return "\n".join(parts)
+@contextmanager
+def turn_span(tracer, request_id, utterance, session=None):
+    """One utterance. Model and tool spans opened inside nest under it.
+
+    An exception that escapes marks the turn as an error with the
+    exception attached, so a 429 that ran out of retries is visible.
+    """
+    with tracer.start_as_current_span("turn", attributes={
+        "openinference.span.kind": "AGENT",
+        "session.id": session or SESSION,
+        "shopkeeper.request_id": request_id,
+        "input.value": utterance,
+    }) as span:
+        yield span
 
 
-def messages_on(span, prefix, messages):
-    for index, message in enumerate(messages):
-        role = message.get("role") or "unknown"
-        span.set_attribute(f"{prefix}.{index}.message.role", role)
-        span.set_attribute(
-            f"{prefix}.{index}.message.content", text_of(message)
-        )
-
-
-def turn_span(tracer, request_id, utterance):
-    span = tracer.start_span("turn")
-    span.set_attribute("openinference.span.kind", "AGENT")
-    span.set_attribute("session.id", SESSION)
-    span.set_attribute("shopkeeper.request_id", request_id)
-    span.set_attribute("input.value", utterance)
-    return span
-
-
-def llm_span(tracer, parent, model, messages, reply, usage):
-    context = trace.set_span_in_context(parent)
-    span = tracer.start_span("llm", context=context)
-    span.set_attribute("openinference.span.kind", "LLM")
-    span.set_attribute("llm.model_name", model)
-    span.set_attribute("input.value", json.dumps(messages, default=str)[:8000])
-    span.set_attribute("output.value", text_of(reply)[:4000])
-    messages_on(span, "llm.input_messages", messages)
-    messages_on(span, "llm.output_messages", [reply])
-    if usage:
-        span.set_attribute(
-            "llm.token_count.prompt", int(usage.get("prompt_tokens") or 0)
-        )
-        span.set_attribute(
-            "llm.token_count.completion",
-            int(usage.get("completion_tokens") or 0),
-        )
-    span.end()
-
-
-def tool_span(tracer, parent, name, arguments, result):
-    context = trace.set_span_in_context(parent)
-    span = tracer.start_span(f"tool.{name}", context=context)
-    span.set_attribute("openinference.span.kind", "TOOL")
-    span.set_attribute("tool.name", name)
-    span.set_attribute("input.value", json.dumps(arguments, default=str)[:4000])
-    span.set_attribute("output.value", (result or "")[:4000])
-    span.end()
+@contextmanager
+def tool_span(tracer, name, arguments):
+    """Timed around the MCP call itself, lock wait included."""
+    with tracer.start_as_current_span(f"tool.{name}", attributes={
+        "openinference.span.kind": "TOOL",
+        "tool.name": name,
+        "input.value": json.dumps(arguments, default=str)[:4000],
+    }) as span:
+        yield span
