@@ -13,6 +13,7 @@ us and never from the model, and what each turn reports.
 import asyncio
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -26,6 +27,7 @@ from agents import (
     Agent,
     FunctionTool,
     MaxTurnsExceeded,
+    ModelBehaviorError,
     ModelSettings,
     OpenAIResponsesModel,
     RunHooks,
@@ -58,6 +60,16 @@ If buy status is sold, confirm pack, price, and stock left. If out_of_stock or u
 Do not mention tools, SKU format rules, or that a database exists.
 """
 
+# SHOPKEEPER_PROMPT=catalog adds what the shop sells, read from the shelf,
+# and asks for every search up front. "base" is SYSTEM alone.
+CATALOG = """
+What the shop sells, by category. These are the item names on the shelf:
+{catalog}
+
+Before you answer a customer line, work out every item they could mean and call guide once for each of them, all in the same step. Search with the item name from the list, like "Long Grain Rice", never with sizes, quantities or other words. If they ask for something general, like "oil" or "something for breakfast", search for each item that fits. Then pick the size, price and quantity from the rows that come back.
+If what they ask for is not in the list, the shop does not sell it.
+"""
+
 
 class ModelError(RuntimeError):
     """A model call that failed after the client's own retries."""
@@ -73,6 +85,24 @@ def load_dotenv():
             continue
         key, value = line.split("=", 1)
         os.environ.setdefault(key.strip(), value.strip())
+
+
+def prompt_name():
+    name = os.environ.get("SHOPKEEPER_PROMPT", "base")
+    if name not in ("base", "catalog"):
+        raise SystemExit(f"SHOPKEEPER_PROMPT must be base or catalog, not {name}")
+    return name
+
+
+def catalog_of(db):
+    """One line per category with its item names, straight from the shelf."""
+    rows = json.loads(subprocess.run(
+        ["duckdb", "-readonly", "-json", str(db), "-c",
+         "SELECT category, string_agg(DISTINCT item, ', ' ORDER BY item) AS items "
+         "FROM products GROUP BY category ORDER BY category"],
+        capture_output=True, text=True, check=True,
+    ).stdout)
+    return "\n".join(f"- {r['category']}: {r['items']}" for r in rows)
 
 
 def allowlisted_model():
@@ -152,6 +182,11 @@ class Shelf:
     def __init__(self, db=DB):
         if not Path(db).exists():
             raise SystemExit(f"missing {db}. Run `make db` from the shopkeeper directory.")
+        # Read before the MCP process opens the file for writing.
+        self.prompt = prompt_name()
+        self.instructions = SYSTEM
+        if self.prompt == "catalog":
+            self.instructions += CATALOG.format(catalog=catalog_of(db))
         key = os.environ.get("OPENROUTER_API_KEY", "")
         if not key:
             raise SystemExit("OPENROUTER_API_KEY is unset. Copy .env.example to .env.")
@@ -250,7 +285,7 @@ async def _turn(shelf, model, history, utterance, request_id,
     effort = os.environ.get("OPENROUTER_REASONING_EFFORT")
     agent = Agent(
         name="counter",
-        instructions=SYSTEM,
+        instructions=shelf.instructions,
         model=OpenAIResponsesModel(model, shelf.client),
         model_settings=ModelSettings(
             max_tokens=400,
@@ -271,6 +306,9 @@ async def _turn(shelf, model, history, utterance, request_id,
             except openai.APIError as exc:
                 code = getattr(exc, "status_code", None) or "timeout"
                 raise ModelError(f"model {code}: {str(exc)[:500]}") from exc
+            except ModelBehaviorError as exc:
+                # e.g. the reply ran past max_tokens and came back incomplete.
+                raise ModelError(f"model reply unusable: {str(exc)[:500]}") from exc
             else:
                 text = str(result.final_output or "")
                 outcome = "replied" if text.strip() else "empty"

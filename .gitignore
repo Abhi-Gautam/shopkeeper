@@ -5,3 +5,4 @@ store/products.csv
 .venv/
 __pycache__/
 *.py[cod]
+store/off/

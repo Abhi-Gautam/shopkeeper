@@ -259,6 +259,7 @@ def rows():
                     yield {
                         "sku": sku,
                         "name": display,
+                        "item": item,
                         "brand": brand,
                         "category": category,
                         "unit": unit,
@@ -275,6 +276,7 @@ def main():
     fieldnames = [
         "sku",
         "name",
+        "item",
         "brand",
         "category",
         "unit",

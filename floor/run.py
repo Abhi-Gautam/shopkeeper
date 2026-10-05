@@ -504,9 +504,10 @@ def main():
         raise SystemExit(f"no conversations in {LINES.name}")
     tracing.start()
     effort = os.environ.get("OPENROUTER_REASONING_EFFORT") or "default"
-    name = f"{model}-{effort}-{time.strftime('%m%d-%H%M')}"
+    prompt = counter.prompt_name()
+    name = f"{model}-{effort}-{prompt}-{time.strftime('%m%d-%H%M')}"
     experiment = Experiment(PHOENIX, customers, name, {
-        "model": model, "reasoning": effort,
+        "model": model, "reasoning": effort, "prompt": prompt,
         "staff": args.staff, "arrival_per_min": args.arrival,
         "project": tracing.PROJECT,
     })

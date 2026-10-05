@@ -5,6 +5,8 @@
 CREATE TABLE IF NOT EXISTS products (
     sku VARCHAR PRIMARY KEY,
     name VARCHAR NOT NULL,
+    -- What a customer would ask for, without brand or variant: "Long Grain Rice".
+    item VARCHAR NOT NULL,
     brand VARCHAR NOT NULL,
     category VARCHAR NOT NULL,
     unit VARCHAR NOT NULL,
