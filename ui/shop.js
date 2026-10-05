@@ -1,9 +1,8 @@
 // Shop floor picture. Draws events. Owns no shop logic.
 //
-// Three surfaces, one state:
-//   canvas  448x252 native, integer-scaled  - the room and the people
+// Two surfaces, one state:
+//   canvas  704x252 native, integer-scaled  - the room and the people
 //   overlay DOM on top of the canvas        - every word, so text stays sharp
-//   rail    DOM list                        - one card per turn, step by step
 //
 // Every number shown arrived in an event. Nothing is guessed here: token
 // counts come from the usage block, step times from around the calls, and
@@ -13,7 +12,9 @@
 
   // ---------- the room, in native pixels ----------
 
-  var W = 448;
+  // The room is as wide as the stage it sits in, so the picture fills the
+  // panel instead of floating in two dead bands of empty wall.
+  var W = 704;
   var H = 252;
 
   var WALL_H       = 172;   // wall meets floor behind the counter
@@ -21,7 +22,7 @@
   var SIGN_Y       = 118;
 
   var COUNTER_X    = 104;
-  var COUNTER_W    = 338;   // 104..442
+  var COUNTER_W    = W - COUNTER_X - 6;
   var COUNTER_TOP  = 170;
   var SURF_H       = 6;
   var FRONT_H      = 22;    // 176..198
@@ -34,8 +35,18 @@
 
   var DOOR_X = 0, DOOR_Y = 174, DOOR_W = 34, DOOR_H = 66;
 
-  var QUEUE_X0 = 56, QUEUE_GAP = 34, MAX_VISIBLE = 6;
+  var QUEUE_X0 = 52, QUEUE_GAP = 40, MAX_VISIBLE = 8;
   var WALK = 118;           // native px per second
+
+  // Evenly spaced across the wall: one lamp roughly every 150 native px.
+  var LAMPS = (function () {
+    var n = Math.max(3, Math.round((W - 120) / 150));
+    var out = [];
+    for (var i = 0; i < n; i++) {
+      out.push(Math.round(84 + ((W - 168) * i) / (n - 1)));
+    }
+    return out;
+  })();
 
   var SHIRTS = [
     "#c0574a", "#3c8b6b", "#c2983f", "#5f74ad", "#ab6385",
@@ -47,8 +58,6 @@
   var frame = document.getElementById("frame");
   var stage = document.getElementById("stage");
   var overlay = document.getElementById("overlay");
-  var turnsEl = document.getElementById("turns");
-  var emptyEl = document.getElementById("empty");
 
   var staffInput = document.getElementById("staff");
   var arrivalInput = document.getElementById("arrival");
@@ -88,8 +97,6 @@
     source: "",
     latHist: [],
     tokHist: [],
-    turns: {},         // tid -> {el, steps, ...}
-    tidOrder: [],
     applyingRemote: false
   };
 
@@ -120,27 +127,12 @@
 
   function shirtFor(id) { return SHIRTS[hash(id) % SHIRTS.length]; }
 
-  function secs(v) {
-    v = Number(v) || 0;
-    if (v >= 10) return v.toFixed(0) + "s";
-    if (v >= 1) return v.toFixed(1) + "s";
-    if (v >= 0.01) return (v * 1000).toFixed(0) + "ms";
-    if (v > 0) return (v * 1000).toFixed(1) + "ms";
-    return "0ms";
-  }
-
   function compact(n) {
     n = Math.round(Number(n) || 0);
     if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
     if (n >= 10000) return Math.round(n / 1000) + "k";
     if (n >= 1000) return (n / 1000).toFixed(1) + "k";
     return String(n);
-  }
-
-  function shortModel(id) {
-    var s = String(id || "");
-    if (s.indexOf("/") >= 0) s = s.split("/").pop();
-    return s.replace(/:free$/, "");
   }
 
   // ---------- controls ----------
@@ -230,8 +222,11 @@
 
   function staffN() { return clamp(state.staff, 1, state.workers); }
 
+  // Every station keeps its own spot on the counter, whatever the slider
+  // says. Turning staff down empties a station in place; it does not shuffle
+  // the others along, and an off plate can never land on a working one.
   function workerX(i) {
-    var n = staffN();
+    var n = Math.max(1, state.workers);
     var inner = COUNTER_W - 96;
     if (n <= 1) return Math.round(COUNTER_X + COUNTER_W / 2);
     return Math.round(COUNTER_X + 48 + (inner * i) / (n - 1));
@@ -295,7 +290,6 @@
           p.ty = QUEUE_FEET;
           p.phase = "wait";
         }
-        if (ev.tid) startTurn(ev, p);
         return;
       }
 
@@ -312,10 +306,6 @@
         a.ty = SERVE_FEET;
         a.turn = num(ev.turn) || a.turn;
         a.turns = num(ev.turns) || a.turns;
-        if (ev.tid) {
-          startTurn(ev, a);
-          markTurn(ev.tid, { worker: w, waited: num(ev.waited) || 0 });
-        }
         return;
       }
 
@@ -343,7 +333,6 @@
             state.gaps.push({ worker: sw, born: nowSec() });
           }
         }
-        addStep(ev);
         return;
       }
 
@@ -359,7 +348,6 @@
           state.atCounter[rw] = r.cid;
         }
         if (rw != null) delete state.active[rw];
-        finishTurn(ev);
         return;
       }
 
@@ -418,235 +406,7 @@
     catch (err) { /* ignore malformed payloads */ }
   }
 
-  // ---------- the rail ----------
-
-  function startTurn(ev, p) {
-    var tid = String(ev.tid);
-    if (state.turns[tid]) return state.turns[tid];
-
-    var card = document.createElement("article");
-    card.className = "turn";
-    card.dataset.status = "open";
-
-    var head = document.createElement("header");
-    head.innerHTML =
-      '<span class="cid"></span><span class="w"></span>' +
-      '<span class="thread"></span><span class="pill open">open</span>' +
-      '<span class="dur">…</span><span class="tok"></span>';
-    card.appendChild(head);
-
-    var ask = document.createElement("p");
-    ask.className = "ask";
-    ask.textContent = cut(ev.text || (p && p.ask) || "", 180);
-    card.appendChild(ask);
-
-    var steps = document.createElement("ol");
-    steps.className = "steps";
-    card.appendChild(steps);
-
-    var rec = {
-      tid: tid,
-      cid: String(ev.cid),
-      el: card,
-      head: head,
-      askEl: ask,
-      stepsEl: steps,
-      rows: {},
-      byRow: {},
-      nextOrder: 0,
-      wall: 0,
-      total: 0,
-      turn: num(ev.turn) || (p && p.turn) || 1,
-      turns: num(ev.turns) || (p && p.turns) || 1
-    };
-    state.turns[tid] = rec;
-    state.tidOrder.unshift(tid);
-
-    head.querySelector(".cid").textContent = rec.cid;
-    head.querySelector(".thread").textContent =
-      rec.turns > 1 ? "line " + rec.turn + "/" + rec.turns : "";
-
-    if (emptyEl && emptyEl.parentNode) emptyEl.remove();
-    turnsEl.insertBefore(card, turnsEl.firstChild);
-
-    while (state.tidOrder.length > 40) {
-      var old = state.tidOrder.pop();
-      var dead = state.turns[old];
-      if (dead && dead.el && dead.el.parentNode) dead.el.remove();
-      delete state.turns[old];
-    }
-    return rec;
-  }
-
-  function markTurn(tid, fields) {
-    var rec = state.turns[String(tid)];
-    if (!rec) return;
-    if (fields.worker != null) {
-      rec.worker = fields.worker;
-      rec.head.querySelector(".w").textContent = "W" + fields.worker;
-    }
-    if (fields.waited) {
-      rec.waited = fields.waited;
-      if (fields.waited >= 0.5) {
-        rec.head.querySelector(".thread").textContent =
-          (rec.turns > 1 ? "line " + rec.turn + "/" + rec.turns + " · " : "") +
-          "waited " + secs(fields.waited);
-      }
-    }
-  }
-
-  function stepRow(rec, key, kind, label) {
-    var li = rec.rows[key];
-    if (li) return li;
-    li = document.createElement("li");
-    li.className = kind;
-    li.innerHTML =
-      '<span class="k"></span><span class="track"><i></i></span>' +
-      '<span class="n"></span><span class="detail"></span>';
-    li.querySelector(".k").textContent = label;
-    rec.rows[key] = li;
-    rec.stepsEl.appendChild(li);
-    return li;
-  }
-
-  function addStep(ev) {
-    var rec = state.turns[String(ev.tid)];
-    if (!rec) rec = startTurn(ev, state.people[String(ev.cid)]);
-    if (!rec) return;
-
-    var kind = ev.kind;
-    var nm = kind === "llm" || kind === "llm.start" ? "llm"
-           : kind === "retry" ? "retry" : String(ev.name);
-    // The row id comes from the counter and is the same for the start and
-    // the finish of one call, so a replayed stream settles rows in place.
-    var key = "r" + (ev.row != null ? ev.row : nm + ":" + ev.step);
-
-    if (kind === "retry") {
-      var rli = stepRow(rec, key, "retry", "retry");
-      rli.querySelector(".n").textContent = "#" + (ev.attempt || 1);
-      rli.querySelector(".detail").textContent = cut(ev.why || "", 70);
-      rli.querySelector(".track i").style.width = "100%";
-      return;
-    }
-
-    var li = stepRow(rec, key, nm, nm);
-
-    if (kind === "llm.start" || kind === "tool.start") {
-      if (rec.byRow[key]) return;              // already finished; ignore a replay
-      li.classList.add("live");
-      li.querySelector(".n").textContent = "\u2026";
-      li.querySelector(".track i").style.left = "0";
-      li.querySelector(".track i").style.width = "14%";
-      if (nm !== "llm" && ev.args) {
-        var q = ev.args.query || ev.args.sku || "";
-        if (q) li.querySelector(".detail").textContent = String(q);
-      }
-      state.active.seenKey = key;
-      return;
-    }
-
-    if (kind !== "llm" && kind !== "tool") return;
-
-    li.classList.remove("live");
-    var seconds = Number(ev.seconds) || 0;
-    rec.byRow[key] = { li: li, seconds: seconds, kind: nm, order: rec.nextOrder++ };
-
-    li.querySelector(".n").textContent = secs(seconds);
-
-    var detail = li.querySelector(".detail");
-    if (kind === "llm") {
-      var tin = Number(ev.prompt_tokens) || 0;
-      var tout = Number(ev.completion_tokens) || 0;
-      var bits = [];
-      if (tin || tout) bits.push(tin + "\u2192" + tout + " tok");
-      if (ev.model) bits.push(shortModel(ev.model));
-      if ((ev.wants || []).length) bits.push("calls " + ev.wants.join("+"));
-      detail.textContent = bits.join("  \u00b7  ");
-    } else if (nm === "guide") {
-      var g = ev.guide || {};
-      var q2 = (ev.args || {}).query || "";
-      detail.innerHTML =
-        (q2 ? '<b>"' + esc(q2) + '"</b> \u2192 ' : "") +
-        (g.rows || 0) + " rows, " + (g.in_stock || 0) + " in stock" +
-        (ev.waited > 0.002 ? " \u00b7 waited " + secs(ev.waited) + " on the pipe" : "");
-    } else if (nm === "buy") {
-      var b = ev.buy || {};
-      var ok = b.status === "sold";
-      detail.innerHTML =
-        '<b class="' + (ok ? "sold" : "out") + '">' + esc(b.status || "?") + "</b>" +
-        (b.sku ? " \u00b7 " + esc(b.sku) : "") +
-        (b.qty ? " \u00d7" + b.qty : "") +
-        (b.price ? " \u00b7 \u20b9" + esc(b.price) : "") +
-        (ok ? " \u00b7 " + b.stock_left + " left" : "");
-    }
-
-    layoutSteps(rec);
-  }
-
-  function layoutSteps(rec) {
-    var rows = [];
-    Object.keys(rec.byRow).forEach(function (k) { rows.push(rec.byRow[k]); });
-    rows.sort(function (a, b) { return a.order - b.order; });
-    var total = 0;
-    rows.forEach(function (r) { total += r.seconds; });
-    rec.total = total;
-    var scale = Math.max(total, rec.wall || 0) || 1;
-    var at = 0;
-    rows.forEach(function (r) {
-      var i = r.li.querySelector(".track i");
-      i.style.left = ((at / scale) * 100).toFixed(2) + "%";
-      i.style.width = Math.max(1.5, (r.seconds / scale) * 100).toFixed(2) + "%";
-      at += r.seconds;
-    });
-  }
-
-  function finishTurn(ev) {
-    var rec = state.turns[String(ev.tid)];
-    if (!rec) rec = startTurn(ev, state.people[String(ev.cid)]);
-    if (!rec) return;
-    Object.keys(rec.rows).forEach(function (k) {
-      rec.rows[k].classList.remove("live");
-    });
-
-    var status = String(ev.status || "guide");
-    rec.el.dataset.status = status;
-    var pill = rec.head.querySelector(".pill");
-    pill.className = "pill " + status;
-    pill.textContent = status;
-    rec.head.querySelector(".dur").textContent = secs(ev.seconds);
-    var tok = Number(ev.tokens) || 0;
-    rec.head.querySelector(".tok").textContent = tok ? compact(tok) + " tok" : "";
-
-    // Scale the waterfall against the wall clock of the turn, so the slice
-    // nobody is accounting for stays visible as the gap on the right.
-    rec.wall = Number(ev.seconds) || 0;
-    layoutSteps(rec);
-
-    if (!rec.sayEl) {
-      rec.sayEl = document.createElement("p");
-      rec.sayEl.className = "say";
-      rec.el.appendChild(rec.sayEl);
-    }
-    rec.sayEl.textContent = cut(ev.text || "", 320);
-
-    var served = (ev.served || []).filter(Boolean);
-    if (served.length && !rec.servedEl) {
-      rec.servedEl = document.createElement("div");
-      rec.servedEl.className = "served";
-      rec.el.appendChild(rec.servedEl);
-    }
-    if (served.length) {
-      var seen = {};
-      rec.servedEl.innerHTML = "";
-      served.forEach(function (m) {
-        if (seen[m]) return;
-        seen[m] = 1;
-        var s = document.createElement("span");
-        s.textContent = shortModel(m);
-        rec.servedEl.appendChild(s);
-      });
-    }
-  }
+  // ---------- text ----------
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -688,7 +448,7 @@
     svg.innerHTML =
       '<path d="' + area + '" fill="' + fill + '"/>' +
       '<path d="' + d + '" fill="none" stroke="' + color +
-      '" stroke-width="1.4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+      '" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
   }
 
   function paintStrip() {
@@ -987,7 +747,7 @@
     }
 
     // hanging lamps
-    [84, 214, 344].forEach(function (lx) {
+    LAMPS.forEach(function (lx) {
       rect(lx, 0, 1, 12, "#4a3a28");
       rect(lx - 5, 12, 11, 3, "#1f1a14");
       rect(lx - 4, 15, 9, 2, "#f2c870");
@@ -1041,9 +801,10 @@
       rect(COUNTER_X + 10 + p, y + SURF_H + 5, 30, 1, "#8a5733");
     }
     var legY = y + SURF_H + FRONT_H;
-    for (var l = 0; l < 5; l++) {
-      var lx = COUNTER_X + 12 + l * ((COUNTER_W - 32) / 4);
-      rect(lx, legY, 7, LEG_H, "#432a18");
+    var legs = Math.max(4, Math.round(COUNTER_W / 100));
+    for (var l = 0; l < legs; l++) {
+      var lx = COUNTER_X + 12 + (l * (COUNTER_W - 32)) / (legs - 1);
+      rect(Math.round(lx), legY, 7, LEG_H, "#432a18");
     }
 
     // the weighing scale, so the counter is not an empty plank
@@ -1190,16 +951,23 @@
       var p = cid && state.people[cid];
       if (!p || p.phase === "leave") continue;
 
-      if (p.ask) {
+      // A full bubble is wide, and a wide box anchored near the door gets
+      // nudged back inside the room right on top of the first shopkeeper.
+      // So while they are still walking up, they only carry the short tag;
+      // the whole question opens once they are standing at the counter.
+      if (p.ask && !p.moving) {
         var ask = want("ask" + p.cid, "bub ask", p.x, p.y - PERSON_H - 5);
         setHTML(ask,
           (p.turns > 1 ? '<span class="turnof">line ' + p.turn + " of " + p.turns + "</span>" : "") +
-          esc(cut(p.ask, 110)));
+          esc(cut(p.ask, 150)));
+      } else if (p.ask) {
+        var walking = want("q" + p.cid, "queuetag", p.x, p.y - PERSON_H - 3);
+        setHTML(walking, esc(cut(p.ask, 30)));
       }
       if (p.reply) {
         var say = want("say" + p.cid, "bub say " + (p.status || ""),
                        keeperX(w), STAFF_FEET - PERSON_H - 26);
-        setHTML(say, esc(cut(p.reply, 190)));
+        setHTML(say, esc(cut(p.reply, 260)));
       }
     }
 
@@ -1208,7 +976,7 @@
       var p = state.people[cid];
       if (!p.ask) return;
       var tag = want("q" + p.cid, "queuetag", p.x, p.y - PERSON_H - 3 - (i % 2) * 12);
-      setHTML(tag, esc(cut(p.ask, 22)));
+      setHTML(tag, esc(cut(p.ask, 30)));
     });
 
     var extra = Math.max(0, waiting.length - MAX_VISIBLE);
@@ -1235,9 +1003,9 @@
     var ah = stage.clientHeight - 16;
     if (aw <= 0 || ah <= 0) return;
     var raw = Math.min(aw / W, ah / H);
-    // Quarter steps above 2x: close enough to the grid to stay crisp, near
+    // Sixteenth steps above 2x: close enough to the grid to stay crisp, near
     // enough to the box that the room is not swimming in empty panel.
-    var s = raw >= 2 ? Math.floor(raw * 4) / 4 : raw;
+    var s = raw >= 2 ? Math.floor(raw * 16) / 16 : raw;
     var px = Math.round(W * s);
     var py = Math.round(H * s);
     if (px === fitW && py === fitH) return;
