@@ -1,26 +1,41 @@
 #!/usr/bin/env python3
-"""Thin grocery counter.
+"""Thin grocery counter on the OpenAI Agents SDK.
 
 The model only sees two tools, both owned by the DuckDB MCP process:
   guide  read stock, prices, substitutes
   buy    sell a SKU the guide already returned
 
-This file does not decide what to sell. It forwards tool calls and
-stops the model from inventing a third tool or a raw SQL string.
+The SDK runs the loop and speaks MCP. This file decides only what the SDK
+cannot: which two tools exist, that buy gets the turn's request_id from
+us and never from the model, and what each turn reports.
 """
 
+import asyncio
 import json
 import os
-import subprocess
 import sys
 import threading
 import time
 import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 import openai
+from agents import (
+    Agent,
+    FunctionTool,
+    MaxTurnsExceeded,
+    ModelSettings,
+    OpenAIChatCompletionsModel,
+    RunConfig,
+    RunHooks,
+    Runner,
+)
+from agents.mcp import MCPServerStdio
+from openai.types.shared import Reasoning
 
-from trace import flush, start as start_trace, tool_span, turn_span
+from trace import flush, start as start_trace, turn_span
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = ROOT / "models.allowlist"
@@ -32,7 +47,7 @@ Reply in plain English. Short. Prices come only from tool results, in USD.
 
 You have two tools and no others:
 - guide: look up what is actually on the shelf. Call this before you name a price, a pack, or a substitute. Also call it when the request is vague ("something for breakfast", "which flour is better").
-- buy: sell only when the customer has asked to buy AND you have a SKU from guide. Never invent a SKU. Pass that SKU, the pack count, and the request_id you were given.
+- buy: sell only when the customer has asked to buy AND you have a SKU from guide. Never invent a SKU. Pass that SKU and the pack count.
 
 If guide says in_stock is false, do not call buy. Offer another row from the same guide result, or say you will note it.
 If buy status is sold, confirm pack, price, and stock left. If out_of_stock or unknown_sku, say so and guide again.
@@ -65,205 +80,222 @@ def load_dotenv():
         os.environ.setdefault(key.strip(), value.strip())
 
 
-class Store:
-    def __init__(self):
-        if not DB.exists():
-            raise SystemExit(f"missing {DB}. Run `make db` from the shopkeeper directory.")
-        self.proc = subprocess.Popen(
-            ["duckdb", "-unsigned", "-init", str(PUBLISH), str(DB)],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            bufsize=0,
-        )
-        # One process owns the shelf. Workers may call the model at the
-        # same time, but their tool calls take turns on this pipe.
-        self.pipe = threading.Lock()
-        self.watch = threading.local()
-        self.next_id = 1
-        self.rpc({
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "shopkeeper", "version": "0"},
-            },
-        })
-        self.notify("notifications/initialized")
-
-    def rpc(self, message):
-        # Workers call the model at once but take turns on this pipe. The
-        # time spent waiting for the lock is contention, not DuckDB work,
-        # so the two are reported apart.
-        queued = time.monotonic()
-        with self.pipe:
-            self.watch.waited = time.monotonic() - queued
-            message = {"jsonrpc": "2.0", "id": self.next_id, **message}
-            expect = self.next_id
-            self.next_id += 1
-            self.proc.stdin.write((json.dumps(message) + "\n").encode())
-            self.proc.stdin.flush()
-            while True:
-                line = self.proc.stdout.readline()
-                if not line:
-                    raise SystemExit("duckdb MCP server exited")
-                text = line.decode(errors="replace").strip()
-                if not text.startswith("{"):
-                    continue
-                parsed = json.loads(text)
-                if parsed.get("id") == expect:
-                    if "error" in parsed:
-                        raise SystemExit(parsed["error"])
-                    return parsed["result"]
-
-    def notify(self, method):
-        with self.pipe:
-            self.proc.stdin.write(
-                (json.dumps({"jsonrpc": "2.0", "method": method}) + "\n").encode()
-            )
-            self.proc.stdin.flush()
-
-    def tools(self):
-        listed = self.rpc({"method": "tools/list", "params": {}})
-        names = {tool["name"] for tool in listed["tools"]}
-        if names != {"guide", "buy"}:
-            raise SystemExit(f"refusing store that publishes {sorted(names)}")
-        return [
-            {
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["inputSchema"],
-                },
-            }
-            for tool in listed["tools"]
-        ]
-
-    def call(self, name, arguments):
-        if name not in {"guide", "buy"}:
-            return f"refused unknown tool {name}"
-        result = self.rpc({
-            "method": "tools/call",
-            "params": {"name": name, "arguments": arguments},
-        })
-        chunks = result.get("content") or []
-        return "\n".join(chunk.get("text", "") for chunk in chunks)
-
-    def close(self):
-        self.proc.terminate()
+# Model calls per turn. The old hand loop allowed four.
+MAX_STEPS = 4
 
 
-# Worth another try at the same call. Anything else is a bug or a bad key.
-RETRY_ON = {408, 429, 500, 502, 503, 504}
-ATTEMPTS = 4
+class ModelError(RuntimeError):
+    """A model call that failed after the SDK's own retries."""
 
 
-class OpenRouterError(RuntimeError):
-    """A model call that failed for good. The text starts "openrouter <code>"."""
+def model_for(name):
+    """The model object for whichever host OPENROUTER_BASE_URL points at.
+
+    OpenAI gets the Responses API, where gpt-6-luna allows tools and
+    reasoning together. OpenRouter only speaks chat completions.
+    """
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not key:
+        raise SystemExit("OPENROUTER_API_KEY is unset. Copy .env.example to .env.")
+    base = os.environ.get("OPENROUTER_BASE_URL", "https://api.openai.com/v1")
+    client = openai.AsyncOpenAI(api_key=key, base_url=base, max_retries=4, timeout=60)
+    if "api.openai.com" in base:
+        from agents.models.openai_responses import OpenAIResponsesModel
+        return OpenAIResponsesModel(name, client)
+    return OpenAIChatCompletionsModel(name, client)
 
 
-_client = None
-
-
-def client():
-    global _client
-    if _client is None:
-        key = os.environ.get("OPENROUTER_API_KEY", "")
-        if not key:
-            raise SystemExit("OPENROUTER_API_KEY is unset. Copy .env.example to .env.")
-        _client = openai.OpenAI(
-            api_key=key,
-            base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-            default_headers={
-                "HTTP-Referer": os.environ.get("OPENROUTER_HTTP_REFERER", "http://localhost"),
-                "X-Title": os.environ.get("OPENROUTER_APP_TITLE", "shopkeeper"),
-            },
-            timeout=60,
-            # Retries live in complete(), so each attempt is its own span.
-            max_retries=0,
-        )
-    return _client
-
-
-def routing():
-    """OpenRouter-only body fields. A pinned provider keeps a score about one
-    deployment of one model, not whichever host answered first."""
+def settings():
+    effort = os.environ.get("OPENROUTER_REASONING_EFFORT")
     extra = {}
     provider = os.environ.get("OPENROUTER_PROVIDER")
     if provider:
+        # OpenRouter only. A score about one deployment, not whichever host.
         extra["provider"] = {"order": [provider], "allow_fallbacks": False}
-    effort = os.environ.get("OPENROUTER_REASONING_EFFORT")
-    if effort:
-        extra["reasoning"] = {"effort": effort}
-    return extra
+    tier = os.environ.get("OPENROUTER_SERVICE_TIER")
+    if tier:
+        # flex is half price and slower. Fine for scores, wrong for latency.
+        extra["service_tier"] = tier
+    return ModelSettings(
+        max_tokens=400,
+        reasoning=Reasoning(effort=effort) if effort else None,
+        extra_body=extra or None,
+    )
 
 
-def complete(model, messages, tools, on_retry=None):
-    """One model call, retried in place on 429, 5xx and timeouts.
+@dataclass
+class Turn:
+    """Run context. The tools and hooks read it; the model never sees it."""
+    request_id: str
+    model: str
+    watch: Callable | None = None
+    served: list = field(default_factory=list)
+    step: int = 0
+    rows: int = 0
 
-    The retry stays inside the turn: same messages, same request_id, and
-    every failed attempt is an error span next to the one that worked.
-    """
-    wait = 4
-    for attempt in range(1, ATTEMPTS + 1):
-        try:
-            response = client().chat.completions.create(
-                model=model,
-                messages=messages,
-                tools=tools,
-                temperature=0.2,
-                max_tokens=400,
-                extra_body=routing(),
-            )
-            break
-        except (openai.APIStatusError, openai.APITimeoutError,
-                openai.APIConnectionError) as exc:
-            code = getattr(exc, "status_code", None)
-            if (code is not None and code not in RETRY_ON) or attempt == ATTEMPTS:
-                raise OpenRouterError(
-                    f"openrouter {code or 'timeout'}: {str(exc)[:500]}"
-                ) from exc
-            if on_retry:
-                on_retry(attempt, f"{code or 'timeout'}: {str(exc)[:120]}")
-            time.sleep(wait)
-            wait = min(wait * 2, 30)
-    if not response.choices:
-        raise OpenRouterError("openrouter 200: no choices in the response")
-    message = response.choices[0].message.model_dump(exclude_none=True)
-    usage = response.usage.model_dump() if response.usage else {}
-    # openrouter/free rewrites this to the model that actually answered.
-    served = response.model or model
-    return message, usage, served
-
-
-def turn(store, tracer, model, tools, history, utterance, request_id,
-         served=None, watch=None, session=None):
-    """One utterance in, one reply out.
-
-    `watch`, if given, is called with a dict per model call and per tool
-    call as they finish. The floor page is drawn from those; nothing here
-    decides what they mean.
-    """
-    history.append({"role": "user", "content": utterance})
-    messages = [
-        {"role": "system", "content": SYSTEM},
-        {"role": "system", "content": f"buy request_id for this turn: {request_id}"},
-        *history,
-    ]
-    if served is None:
-        served = []
-    try:
-        with turn_span(tracer, request_id, utterance, session) as span:
-            span.set_attribute("shopkeeper.requested_model", model)
+    def tell(self, event):
+        if self.watch:
             try:
-                text, outcome = _turn(
-                    store, tracer, model, tools, history, messages,
-                    request_id, served, watch,
+                self.watch(event)
+            except Exception:
+                # A page that cannot keep up must not lose the sale.
+                pass
+
+    def row(self):
+        self.rows += 1
+        return self.rows
+
+
+class Steps(RunHooks):
+    """Model-call events for the floor page. Phoenix gets its spans from
+    the instrumentor, not from here."""
+
+    async def on_llm_start(self, context, agent, system_prompt, input_items):
+        turn = context.context
+        turn.step += 1
+        turn.llm_row = turn.row()
+        turn.began = time.monotonic()
+        turn.tell({"kind": "llm.start", "step": turn.step,
+                   "row": turn.llm_row, "model": turn.model})
+
+    async def on_llm_end(self, context, agent, response):
+        turn = context.context
+        turn.served.append(turn.model)
+        wants = [item.name for item in response.output
+                 if getattr(item, "type", "") == "function_call"]
+        turn.tell({
+            "kind": "llm",
+            "step": turn.step,
+            "row": turn.llm_row,
+            "model": turn.model,
+            "seconds": round(time.monotonic() - turn.began, 3),
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+            "wants": wants,
+        })
+
+
+class Shelf:
+    """The DuckDB MCP process, and the event loop the SDK runs on.
+
+    Callers are plain threads (the floor's workers, the batch runner).
+    They hand each turn to this one loop and wait for it, so one MCP
+    session serves everyone and the floor does not need to be async.
+    """
+
+    def __init__(self):
+        if not DB.exists():
+            raise SystemExit(f"missing {DB}. Run `make db` from the shopkeeper directory.")
+        self.loop = asyncio.new_event_loop()
+        threading.Thread(target=self.loop.run_forever, daemon=True).start()
+        self.server = MCPServerStdio(
+            params={"command": "duckdb",
+                    "args": ["-unsigned", "-init", str(PUBLISH), str(DB)]},
+            name="shelf",
+            client_session_timeout_seconds=30,
+        )
+        self.run(self.server.connect())
+        listed = self.run(self.server.list_tools())
+        names = {tool.name for tool in listed}
+        if names != {"guide", "buy"}:
+            raise SystemExit(f"refusing store that publishes {sorted(names)}")
+        # DuckDB answers one call at a time. Waiting for it is contention,
+        # not query time, so the two are reported apart.
+        self.pipe = asyncio.Lock()
+        self.tools = [self.wrap(tool) for tool in listed]
+
+    def run(self, coro):
+        return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
+
+    def wrap(self, tool):
+        schema = json.loads(json.dumps(tool.input_schema))
+        if tool.name == "buy":
+            # The model never writes the idempotency key. One per turn.
+            schema["properties"].pop("request_id", None)
+            schema["required"] = [k for k in schema.get("required", []) if k != "request_id"]
+
+        async def invoke(ctx, raw):
+            turn = ctx.context
+            try:
+                arguments = json.loads(raw or "{}")
+            except json.JSONDecodeError:
+                arguments = {}
+            if tool.name == "buy":
+                arguments["request_id"] = turn.request_id
+                arguments["qty"] = int(arguments.get("qty") or 1)
+            row = turn.row()
+            turn.tell({"kind": "tool.start", "step": turn.step, "row": row,
+                       "name": tool.name, "args": arguments})
+            queued = time.monotonic()
+            async with self.pipe:
+                began = time.monotonic()
+                result = await self.server.call_tool(tool.name, arguments)
+            done = time.monotonic()
+            text = "\n".join(getattr(c, "text", "") for c in result.content)
+            turn.tell({"kind": "tool", "step": turn.step, "row": row,
+                       "name": tool.name, "args": arguments, "result": text,
+                       "seconds": round(done - began, 4),
+                       "waited": round(began - queued, 4)})
+            return text
+
+        return FunctionTool(
+            name=tool.name,
+            description=tool.description or "",
+            params_json_schema=schema,
+            on_invoke_tool=invoke,
+            strict_json_schema=False,
+        )
+
+    def close(self):
+        try:
+            self.run(self.server.cleanup())
+        finally:
+            self.loop.call_soon_threadsafe(self.loop.stop)
+
+
+def turn(shelf, model, history, utterance, request_id,
+         served=None, watch=None, session=None):
+    """One utterance in, one reply out. Blocks the calling thread.
+
+    `history` is the SDK's input list and is replaced in place, so the
+    next turn sees this turn's tool calls and results, not just its text.
+    """
+    return shelf.run(_turn(shelf, model, history, utterance, request_id,
+                           served, watch, session))
+
+
+async def _turn(shelf, model, history, utterance, request_id,
+                served, watch, session):
+    context = Turn(request_id=request_id, model=model, watch=watch,
+                   served=served if served is not None else [])
+    agent = Agent(
+        name="counter",
+        instructions=SYSTEM,
+        model=model_for(model),
+        model_settings=settings(),
+        tools=shelf.tools,
+    )
+    items = [*history, {"role": "user", "content": utterance}]
+    try:
+        with turn_span(request_id, utterance, model, session) as span:
+            try:
+                result = await Runner.run(
+                    agent, items, context=context, max_turns=MAX_STEPS,
+                    hooks=Steps(),
+                    run_config=RunConfig(workflow_name="counter"),
                 )
-            finally:
-                if served:
-                    span.set_attribute("shopkeeper.served_models", ",".join(served))
+            except MaxTurnsExceeded:
+                text, outcome = "Counter is stuck in tools. Say it again, shorter.", "stuck"
+                history[:] = [*items, {"role": "assistant", "content": text}]
+            except openai.APIError as exc:
+                code = getattr(exc, "status_code", None) or "timeout"
+                raise ModelError(f"model {code}: {str(exc)[:500]}") from exc
+            else:
+                text = str(result.final_output or "")
+                outcome = "replied" if text.strip() else "empty"
+                history[:] = result.to_input_list()
+            if context.served:
+                span.set_attribute("shopkeeper.served_models", ",".join(context.served))
             # replied, empty (model said nothing) or stuck (ran out of steps).
             span.set_attribute("shopkeeper.outcome", outcome)
             span.set_attribute("output.value", text[:4000])
@@ -272,106 +304,11 @@ def turn(store, tracer, model, tools, history, utterance, request_id,
         flush()
 
 
-def _turn(store, tracer, model, tools, history, messages, request_id,
-          served, watch=None):
-    def tell(event):
-        if watch:
-            try:
-                watch(event)
-            except Exception:
-                # A page that cannot keep up must not lose the sale.
-                pass
-
-    # One id per row the page draws. The start and the finish of the same
-    # call carry the same id, so a page that reconnects and replays the
-    # stream settles rows in place instead of stacking copies of them.
-    seen = {"row": 0}
-
-    def row():
-        seen["row"] += 1
-        return seen["row"]
-
-    step = 0
-    for _ in range(4):
-        step += 1
-        llm_row = row()
-        tell({"kind": "llm.start", "step": step, "row": llm_row, "model": model})
-        began = time.monotonic()
-
-        def retried(attempt, why, step=step):
-            tell({"kind": "retry", "step": step,
-                  "row": f"retry{step}.{attempt}",
-                  "attempt": attempt, "why": why})
-
-        message, usage, answered_by = complete(model, messages, tools, retried)
-        seconds = time.monotonic() - began
-        served.append(answered_by)
-        tool_calls = message.get("tool_calls") or []
-        tell({
-            "kind": "llm",
-            "step": step,
-            "row": llm_row,
-            "model": answered_by,
-            "seconds": round(seconds, 3),
-            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
-            "completion_tokens": int(usage.get("completion_tokens") or 0),
-            "wants": [c["function"]["name"] for c in tool_calls],
-        })
-        if not tool_calls:
-            text = message.get("content") or ""
-            history.append({"role": "assistant", "content": text})
-            return text, "replied" if text.strip() else "empty"
-        messages.append({
-            "role": "assistant",
-            "content": message.get("content"),
-            "tool_calls": tool_calls,
-        })
-        for call in tool_calls:
-            name = call["function"]["name"]
-            raw = call["function"].get("arguments") or "{}"
-            try:
-                arguments = json.loads(raw)
-            except json.JSONDecodeError:
-                arguments = {}
-            if name == "buy":
-                arguments["request_id"] = request_id
-                arguments["qty"] = int(arguments.get("qty") or 1)
-            tool_row = row()
-            tell({"kind": "tool.start", "step": step, "row": tool_row,
-                  "name": name, "args": arguments})
-            store.watch.waited = 0.0
-            began = time.monotonic()
-            with tool_span(tracer, name, arguments) as span:
-                result = store.call(name, arguments)
-                span.set_attribute("output.value", (result or "")[:4000])
-            seconds = time.monotonic() - began
-            watched = getattr(store.watch, "calls", None)
-            if watched is not None:
-                watched.append({"name": name, "result": result})
-            tell({
-                "kind": "tool",
-                "step": step,
-                "row": tool_row,
-                "name": name,
-                "args": arguments,
-                "result": result,
-                "seconds": round(seconds, 4),
-                "waited": round(getattr(store.watch, "waited", 0.0) or 0.0, 4),
-            })
-            messages.append({
-                "role": "tool",
-                "tool_call_id": call.get("id", name),
-                "content": result,
-            })
-    return "Counter is stuck in tools. Say it again, shorter.", "stuck"
-
-
 def main():
     load_dotenv()
     model = allowlisted_model()
-    tracer = start_trace()
-    store = Store()
-    tools = store.tools()
+    start_trace()
+    shelf = Shelf()
     history = []
     print(f"counter up on {model}. empty line to leave.", file=sys.stderr)
     print("traces: http://localhost:6006", file=sys.stderr)
@@ -383,10 +320,9 @@ def main():
                 break
             if not utterance:
                 break
-            request_id = uuid.uuid4().hex
-            print(turn(store, tracer, model, tools, history, utterance, request_id))
+            print(turn(shelf, model, history, utterance, uuid.uuid4().hex))
     finally:
-        store.close()
+        shelf.close()
         flush()
 
 

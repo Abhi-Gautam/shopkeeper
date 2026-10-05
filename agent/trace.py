@@ -1,20 +1,22 @@
 """Send each counter turn to Phoenix. A dead collector must not stop a sale.
 
-Model calls are traced by the OpenInference OpenAI instrumentor. It opens
-the span before the request and closes it after, records messages, tool
-calls, tokens and the model that answered, and marks a 429 as an error.
-This file only adds what no library can see: the turn around those calls
-and the two DuckDB tools, which go over our own MCP pipe.
+The OpenInference Agents instrumentor turns the SDK's own trace into
+spans: the agent run, every model call (messages, tokens, finish reason,
+errors) and every tool call with its arguments and result. It replaces
+the SDK's default exporter, so nothing is uploaded to OpenAI.
 
-The OpenRouter key is never an attribute.
+This file adds one span around that, `utterance` (the SDK already names
+its own per-step spans `turn`), carrying what only the
+counter knows (request_id, the customer as session, the outcome).
+The API key is never an attribute.
 """
 
-import json
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from openinference.instrumentation.openai import OpenAIInstrumentor
+from openinference.instrumentation import using_session
+from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
@@ -35,8 +37,7 @@ def start():
         BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, timeout=2))
     )
     trace.set_tracer_provider(provider)
-    OpenAIInstrumentor().instrument(tracer_provider=provider)
-    return trace.get_tracer("shopkeeper")
+    OpenAIAgentsInstrumentor().instrument(tracer_provider=provider)
 
 
 def flush():
@@ -47,27 +48,19 @@ def flush():
 
 
 @contextmanager
-def turn_span(tracer, request_id, utterance, session=None):
-    """One utterance. Model and tool spans opened inside nest under it.
+def turn_span(request_id, utterance, model, session=None):
+    """One utterance. The agent run and its spans nest under it.
 
     An exception that escapes marks the turn as an error with the
-    exception attached, so a 429 that ran out of retries is visible.
+    exception attached, so a call that ran out of retries is visible.
     """
-    with tracer.start_as_current_span("turn", attributes={
-        "openinference.span.kind": "AGENT",
-        "session.id": session or SESSION,
+    tracer = trace.get_tracer("shopkeeper")
+    session = session or SESSION
+    with using_session(session), tracer.start_as_current_span("utterance", attributes={
+        "openinference.span.kind": "CHAIN",
+        "session.id": session,
         "shopkeeper.request_id": request_id,
+        "shopkeeper.requested_model": model,
         "input.value": utterance,
-    }) as span:
-        yield span
-
-
-@contextmanager
-def tool_span(tracer, name, arguments):
-    """Timed around the MCP call itself, lock wait included."""
-    with tracer.start_as_current_span(f"tool.{name}", attributes={
-        "openinference.span.kind": "TOOL",
-        "tool.name": name,
-        "input.value": json.dumps(arguments, default=str)[:4000],
     }) as span:
         yield span

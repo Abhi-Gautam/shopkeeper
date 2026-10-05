@@ -1,6 +1,10 @@
 -- Curated MCP surface. Loaded by the server process, not by the seeder.
 -- builtin tools stay off: the model must not get a raw SQL tool.
 
+-- stdout is the MCP stream. Drop the CLI's own result tables so a client
+-- that reads every line as JSON-RPC never sees "0 rows".
+.mode trash
+
 LOAD duckdb_mcp;
 
 PRAGMA mcp_publish_tool(
@@ -23,7 +27,7 @@ PRAGMA mcp_publish_tool(
      LIMIT LEAST(GREATEST(COALESCE($limit, 8), 1), 12)',
     '{
         "query": {"type": "string", "description": "Words from the customer: item, brand, or SKU"},
-        "category": {"type": "string", "description": "Optional exact category such as flour, grains, dairy, oil"},
+        "category": {"type": "string", "description": "Optional exact category, one of: flour, grains, pasta, legumes, oil, condiments, spices, tea_coffee, breakfast, snacks, dairy, bakery, canned, baking, beverages, cleaning, personal"},
         "limit": {"type": "integer", "description": "How many rows. Default 8, hard cap 12"}
     }',
     '["query"]',

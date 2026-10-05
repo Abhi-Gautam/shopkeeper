@@ -15,3 +15,8 @@ nvidia/nemotron-3-super-120b-a12b:free
 # every host. Pin OPENROUTER_PROVIDER=OpenAI with it so a score is about
 # one deployment. About $1 per 5M in + 1M out, before caching.
 openai/gpt-6-luna
+
+# Direct from OpenAI (OPENROUTER_BASE_URL=https://api.openai.com/v1).
+# Checked 2026-10-05 on developers.openai.com/api/docs/pricing, per 1M:
+# $0.10 in / $0.01 cached / $0.50 out; flex tier is half that.
+gpt-6-luna

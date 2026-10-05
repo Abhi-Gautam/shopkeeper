@@ -11,7 +11,7 @@ load and the counter loop are scaffolding.
 
 ```text
 customer text
-  -> agent/counter.py          OpenRouter model, two tools only
+  -> agent/counter.py          OpenAI Agents SDK, two tools only
        guide  -> DuckDB MCP    read, markdown, no stock change
        buy    -> DuckDB MCP    one transaction, request_id is idempotent
   -> reply
@@ -123,14 +123,16 @@ container `shopkeeper-phoenix`). `make phoenix` is `docker compose up -d`.
 UI is [http://localhost:6006](http://localhost:6006). The counter posts
 OTLP HTTP to `http://localhost:6006/v1/traces` (`PHOENIX_OTLP` overrides it).
 
-Each turn is one agent span with child `ChatCompletion` and
-`tool.guide` / `tool.buy` spans. The model spans come from the
-OpenInference OpenAI instrumentor, which times the real request and
-marks a failed one as an error; `agent/trace.py` only writes the turn
-and the tool spans, because those go over our own MCP pipe. A 429 or
-timeout is retried inside the turn, so every failed attempt is a red
-span beside the one that worked. `shopkeeper.outcome` on the turn is
-`replied`, `empty` or `stuck`. On the floor, `session.id` is the
+The loop, the MCP client and the retries are the OpenAI Agents SDK.
+Spans come from the OpenInference Agents instrumentor: the agent run,
+each model call (`response`) and each tool call (`guide` / `buy`), with
+real timings and errors. It replaces the SDK's own exporter, so nothing
+goes to OpenAI's trace dashboard. `agent/trace.py` adds one span on top,
+`utterance`, because the SDK names its per-step spans `turn`.
+`shopkeeper.outcome` on it is `replied`, `empty` or `stuck` (hit the
+4-call limit). History between turns is the SDK's input list, so a
+follow-up sees the SKUs the last turn found. The model never sees
+`request_id`; the `buy` wrapper adds it. On the floor, `session.id` is the
 customer, so a Phoenix session is one conversation.
 The OpenRouter key is never an attribute. If Phoenix is down, the
 exporter times out in 2 seconds and the sale still goes through.

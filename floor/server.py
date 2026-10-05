@@ -175,9 +175,7 @@ class Shop:
         self.arrival = ARRIVAL
         self.dropped = 0
         self.stop = threading.Event()
-        self.store = None
-        self.tools = None
-        self.tracer = None
+        self.shelf = None
         self.model = None
         self.busy = set()
         self.lock = threading.Lock()
@@ -271,13 +269,12 @@ class Shop:
     def open_shelf(self):
         counter.load_dotenv()
         self.model = counter.allowlisted_model()
-        self.tracer = counter.start_trace()
-        self.store = counter.Store()
-        self.tools = self.store.tools()
+        counter.start_trace()
+        self.shelf = counter.Shelf()
 
     def close_shelf(self):
-        if self.store:
-            self.store.close()
+        if self.shelf:
+            self.shelf.close()
         counter.flush()
 
 
@@ -320,7 +317,6 @@ def serve_one(shop, worker, cid, tid, ask, history):
     """One utterance. Streams its own steps, returns the reply event."""
     served = []
     steps = []
-    shop.store.watch.calls = []
     started = time.monotonic()
     reply = ""
 
@@ -336,15 +332,15 @@ def serve_one(shop, worker, cid, tid, ask, history):
             steps.append(dict(out))
         shop.emit(out)
 
-    # 429s and timeouts are retried inside the model call, so the customer
+    # 429s and timeouts are retried by the SDK's client, so the customer
     # keeps their history and Phoenix keeps one turn per utterance. What
     # reaches here has already failed for good.
     try:
         reply = counter.turn(
-            shop.store, shop.tracer, shop.model, shop.tools,
-            history, ask, tid, served, watch, session=cid,
+            shop.shelf, shop.model, history, ask, tid, served, watch,
+            session=cid,
         )
-    except counter.OpenRouterError:
+    except counter.ModelError:
         reply = "One moment."
 
     seconds = round(time.monotonic() - started, 2)
@@ -479,7 +475,7 @@ def phoenix_metrics():
     tokens = 0
     lat = []
     for span in spans:
-        if span.get("name") != "turn":
+        if span.get("name") != "utterance":
             continue
         try:
             a = datetime.fromisoformat(span["start_time"].replace("Z", "+00:00"))
