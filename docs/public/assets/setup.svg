@@ -26,17 +26,17 @@
   </g>
   <g text-anchor="middle">
     <text x="95" y="64">100 customers</text>
-    <text x="95" y="82" fill="#555">conversations.txt</text>
+    <text x="95" y="82" fill="#555">conversations</text>
     <text x="335" y="64">runner</text>
-    <text x="335" y="82" fill="#555">floor/run.py</text>
+    <text x="335" y="82" fill="#555">fresh shelf per run</text>
     <text x="620" y="64">gpt-6-luna</text>
     <text x="620" y="82" fill="#555">OpenAI Responses API</text>
     <text x="335" y="184">counter</text>
-    <text x="335" y="202" fill="#555">Agents SDK</text>
+    <text x="335" y="202" fill="#555">4 model calls max</text>
     <text x="620" y="184">shelf</text>
     <text x="620" y="202" fill="#555">DuckDB MCP server</text>
     <text x="95" y="274">shop floor page</text>
-    <text x="95" y="292" fill="#555">--ui, :8787</text>
+    <text x="95" y="292" fill="#555">optional view</text>
     <text x="335" y="274">Phoenix</text>
     <text x="335" y="292" fill="#555">traces, scores</text>
   </g>
