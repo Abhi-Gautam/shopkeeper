@@ -306,38 +306,71 @@
   .plate.busy .dot { color: var(--llm); }
   .plate .dot { color: var(--faint); }
   .plate.off { opacity: 0.35; }
+  .plate .st { color: var(--faint); }
+  .plate .st b { font-weight: 600; }
+  .plate .st b.llm   { color: #9fc6f5; }
+  .plate .st b.guide { color: #eccb82; }
+  .plate .st b.buy   { color: #c5b1f7; }
 
-  /* the thinking chip above a working shopkeeper */
-  .chip {
-    position: absolute;
-    transform: translate(-50%, -100%);
-    font-family: var(--mono);
-    font-size: 12.5px;
-    padding: 3px 10px;
-    border-radius: 999px;
+  /* The same bubble, folded down: a question already read, someone still
+     walking up, or a name in the line. Speech is never mono. */
+  .bub.tag {
+    max-width: min(20%, 250px);
+    min-width: 0;
+    padding: 4px 9px 5px;
+    border-radius: 6px;
+    font-size: 13px;
+    background: #1a2332;
+    color: #9fb2cb;
+    box-shadow: 0 2px 0 #0005, 0 4px 10px #0006;
     white-space: nowrap;
-    background: #0d1422ee;
-    border: 1px solid var(--line-hi);
-    color: var(--mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .chip.llm   { border-color: #2d558a; color: #9fc6f5; }
-  .chip.guide { border-color: #6d5420; color: #eccb82; }
-  .chip.buy   { border-color: #503f80; color: #c5b1f7; }
-  .chip .el { color: var(--faint); margin-left: 6px; }
+  .bub.tag::after { width: 9px; height: 5px; bottom: -4px; }
 
-  .queuetag {
+  /* What the shelf answered, down on the counter where it belongs. Mono
+     here is the point: these are rows out of DuckDB, not something anyone
+     said. */
+  .slip {
     position: absolute;
-    transform: translate(-50%, -100%);
+    transform: translate(-50%, -100%) rotate(-0.8deg);
     width: max-content;
+    min-width: 150px;
+    max-width: min(24%, 300px);
+    padding: 7px 10px 8px;
+    border-radius: 2px;
+    border-top: 2px solid #e4d9bd;
+    background: #faf6ea;
+    color: #2b2419;
     font-family: var(--mono);
     font-size: 12.5px;
-    color: #9fb0c9;
-    background: #0a0f1ae8;
-    border: 1px solid var(--line);
-    border-radius: 5px;
-    padding: 2px 7px;
-    white-space: nowrap;
+    line-height: 1.5;
+    box-shadow: 0 1px 0 #0006, 0 7px 16px #0008;
+    pointer-events: auto;
   }
+  .slip .row { display: flex; align-items: baseline; gap: 10px; }
+  .slip .it {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .slip .it i { font-style: normal; color: #8d8370; }
+  .slip .pr { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .slip .sec {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #8d8370;
+    margin: 3px 0 1px;
+    border-bottom: 1px dotted #d8ccae;
+  }
+  .slip .sec:first-child { margin-top: 0; }
+  .slip .more { color: #8d8370; }
+  .slip.out   { box-shadow: 0 1px 0 #0006, 0 0 0 2px var(--out),  0 7px 16px #0008; }
+  .slip.error { box-shadow: 0 1px 0 #0006, 0 0 0 2px var(--err),  0 7px 16px #0008; }
 
   /* ---------- metric strip ---------- */
 

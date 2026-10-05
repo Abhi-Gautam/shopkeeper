@@ -408,6 +408,101 @@
 
   // ---------- text ----------
 
+  // The shopkeeper answers in markdown: a line of talk, then a list of what
+  // is on the shelf at what price. A list is not speech. The talk stays in
+  // the balloon and the list goes down on the counter as a slip, which is
+  // where a kirana shopkeeper would put it anyway.
+
+  var PRICE = /\u20b9\s*\d[\d.,]*/;
+
+  function plain(text) {
+    return String(text == null ? "" : text)
+      .replace(/[*_`]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function splitItems(text) {
+    var s = String(text == null ? "" : text).replace(/\r/g, "");
+    var parts = s.split("\n");
+    // A model that answered on one line still marks every item with a dash,
+    // so when the newlines are gone the dashes are the next best seam.
+    if (parts.length < 3) parts = s.split(/\s+(?=[-*\u2022]\s)/);
+    return parts.map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+
+  function parseReply(text) {
+    var lead = "";
+    var rows = [];
+
+    splitItems(text).forEach(function (part) {
+      var isItem = /^[-*\u2022]\s/.test(part);
+
+      // The model bolds its headings. That bold is the only reliable tell
+      // between "Paani (1 L pack):" standing over a list and "Bhai, yeh
+      // rahi options:" being said out loud, so read it before plain()
+      // throws the markdown away.
+      var bold = part.match(/\*\*([^*]+)\*\*|__([^_]+)__|^#{1,6}\s+(.+)$/);
+      var head = bold
+        ? plain(bold[1] || bold[2] || bold[3]).replace(/:$/, "").trim()
+        : "";
+      var upto = bold ? part.slice(0, bold.index) : part;
+
+      if (!isItem) {
+        var said = plain(upto).replace(/[\s:]+$/, "");
+        if (said && !rows.length) lead = lead ? lead + " " + said : said;
+        if (head) rows.push({ sec: head });
+        return;
+      }
+
+      var body = plain(upto.replace(/^[-*\u2022]\s*/, ""));
+      if (body) {
+        var m = body.match(PRICE);
+        var label = (m ? body.slice(0, m.index) : body)
+          .replace(/[\s\u2014\u2013-]+$/, "");
+        var tail = m ? body.slice(m.index + m[0].length) : "";
+        rows.push({
+          label: label.trim(),
+          note: (tail.match(/\(([^)]*)\)/) || [])[1] || "",
+          price: m ? m[0].replace(/\s+/g, "") : ""
+        });
+      }
+      // A heading that came along for the ride heads the rows after it.
+      if (head) rows.push({ sec: head });
+    });
+
+    return { lead: lead, rows: rows };
+  }
+
+  // Rows with a price are the ones worth a slip; one lonely line is still
+  // just the shopkeeper talking.
+  function slipRows(parsed) {
+    return parsed.rows.filter(function (r) { return r.price; }).length >= 2
+      ? parsed.rows
+      : [];
+  }
+
+  function slipHTML(rows) {
+    var shown = rows.slice(0, 6);
+    var html = shown.map(function (r) {
+      if (r.sec) return '<div class="sec">' + esc(cut(r.sec, 30)) + "</div>";
+      return '<div class="row"><span class="it">' + esc(cut(r.label, 26)) +
+             (r.note ? " <i>" + esc(cut(r.note, 16)) + "</i>" : "") +
+             '</span><span class="pr">' + esc(r.price) + "</span></div>";
+    }).join("");
+    var rest = rows.length - shown.length;
+    return html + (rest > 0 ? '<div class="more">+' + rest + " more</div>" : "");
+  }
+
+  // How tall that slip stands, in native pixels, so the balloon above it
+  // knows where to stop. The numbers are the slip's own type metrics.
+  function slipHeight(rows) {
+    var scale = fitH ? fitH / H : 2;
+    var shown = Math.min(rows.length, 6);
+    var px = shown * 19 + 17 + (rows.length > shown ? 19 : 0);
+    return px / scale;
+  }
+
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
@@ -483,7 +578,7 @@
       row.querySelector("b").style.width = ((pair[1] / worst) * 100).toFixed(1) + "%";
       row.children[2].textContent = String(pair[1]);
     });
-    strip.turnsN.textContent = t.turns + " turns";
+    strip.turnsN.textContent = t.turns + (t.turns === 1 ? " turn" : " turns");
 
     strip.calls.innerHTML = compact(t.guides) + "<s>guide</s> " +
       '<span style="color:var(--buy)">' + compact(t.buys) + "</span><s>buy</s>";
@@ -928,22 +1023,21 @@
     Object.keys(els).forEach(function (k) { delete els[k].dataset.keep; });
     var n = staffN();
 
+    // What a station is doing rides on its own plate. A chip floating over
+    // the shopkeeper's head only had the one place to be, which was
+    // wherever the speech already was.
     for (var i = 0; i < state.workers; i++) {
       var off = i >= n;
-      var busy = !off && state.busy.indexOf(i) >= 0;
+      var act = !off && state.active[i];
+      var busy = !off && (act || state.busy.indexOf(i) >= 0);
       var plate = want("plate" + i, "plate" + (off ? " off" : busy ? " busy" : ""),
                        workerX(i), COUNTER_TOP + SURF_H + FRONT_H + LEG_H + 3);
+      var doing = off ? "off" : !act ? "idle"
+        : '<b class="' + (act.kind === "llm" ? "llm" : act.name) + '">' +
+          (act.kind === "llm" ? "thinking" : act.name) + "</b> " +
+          Math.max(0, nowSec() - act.since).toFixed(1) + "s";
       setHTML(plate, '<span class="dot">●</span> W' + i +
-              (off ? " off" : busy ? "" : " idle"));
-
-      var act = state.active[i];
-      if (!off && act) {
-        var el = Math.max(0, nowSec() - act.since);
-        var chip = want("chip" + i, "chip " + (act.kind === "llm" ? "llm" : act.name),
-                        keeperX(i), STAFF_FEET - PERSON_H - 4);
-        setHTML(chip, (act.kind === "llm" ? "thinking" : act.name) +
-                '<span class="el">' + el.toFixed(1) + "s</span>");
-      }
+              ' <span class="st">' + doing + "</span>");
     }
 
     for (var w = 0; w < n; w++) {
@@ -951,37 +1045,60 @@
       var p = cid && state.people[cid];
       if (!p || p.phase === "leave") continue;
 
-      // A full bubble is wide, and a wide box anchored near the door gets
-      // nudged back inside the room right on top of the first shopkeeper.
-      // So while they are still walking up, they only carry the short tag;
-      // the whole question opens once they are standing at the counter.
-      if (p.ask && !p.moving) {
+      var parsed = p.reply ? parseReply(p.reply) : null;
+      var rows = parsed ? slipRows(parsed) : [];
+
+      // Only one of the two gets to be a full balloon. Once the answer is
+      // out the question has been read, so it folds back down to a tag and
+      // the station has room for the reply.
+      var full = p.ask && !p.moving && !p.reply;
+      if (full) {
         var ask = want("ask" + p.cid, "bub ask", p.x, p.y - PERSON_H - 5);
         setHTML(ask,
           (p.turns > 1 ? '<span class="turnof">line ' + p.turn + " of " + p.turns + "</span>" : "") +
-          esc(cut(p.ask, 150)));
+          esc(cut(plain(p.ask), 150)));
       } else if (p.ask) {
-        var walking = want("q" + p.cid, "queuetag", p.x, p.y - PERSON_H - 3);
-        setHTML(walking, esc(cut(p.ask, 30)));
+        var tag = want("q" + p.cid, "bub ask tag", p.x, p.y - PERSON_H - 3);
+        setHTML(tag, esc(cut(plain(p.ask), 34)));
       }
+
+      if (rows.length) {
+        // The slip lies on the plank in the gap beside the station, never
+        // over the two people standing at it. The last station has no gap
+        // to its right, so its slip goes down on the other side.
+        var sx = workerX(w) + 104;
+        if (sx + 86 > W - 4) sx = workerX(w) - 112;
+        var slip = want("slip" + p.cid, "slip " + (p.status || ""),
+                        sx, COUNTER_TOP + 4);
+        setHTML(slip, slipHTML(rows));
+      }
+
       if (p.reply) {
-        var say = want("say" + p.cid, "bub say " + (p.status || ""),
-                       keeperX(w), STAFF_FEET - PERSON_H - 26);
-        setHTML(say, esc(cut(p.reply, 260)));
+        // The balloon stops above whatever is lying on the counter.
+        var floor = rows.length
+          ? COUNTER_TOP + 4 - slipHeight(rows) - 7
+          : STAFF_FEET - PERSON_H - 26;
+        var said = rows.length ? parsed.lead : plain(p.reply);
+        if (said) {
+          var say = want("say" + p.cid, "bub say " + (p.status || ""),
+                         keeperX(w), Math.max(54, floor));
+          setHTML(say, esc(cut(said, rows.length ? 110 : 180)));
+        }
       }
     }
 
     var waiting = waitingIds();
-    waiting.slice(0, 4).forEach(function (cid, i) {
+    waiting.slice(0, 3).forEach(function (cid, i) {
       var p = state.people[cid];
       if (!p.ask) return;
-      var tag = want("q" + p.cid, "queuetag", p.x, p.y - PERSON_H - 3 - (i % 2) * 12);
-      setHTML(tag, esc(cut(p.ask, 30)));
+      var qt = want("q" + p.cid, "bub ask tag", p.x,
+                    p.y - PERSON_H - 3 - (i % 2) * 20);
+      setHTML(qt, esc(cut(plain(p.ask), 34)));
     });
 
     var extra = Math.max(0, waiting.length - MAX_VISIBLE);
     if (extra > 0) {
-      var more = want("more", "queuetag", DOOR_X + DOOR_W / 2, DOOR_Y - 4);
+      var more = want("more", "bub ask tag", DOOR_X + DOOR_W / 2, DOOR_Y - 4);
       setHTML(more, "+" + extra + " outside");
     }
 
@@ -1082,7 +1199,7 @@
     at(5.12, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "tool", step: 1, name: "guide", args: { query: "tea" }, seconds: 0.038, waited: 0.112, guide: { rows: 11, in_stock: 9, offered: [] } });
     at(5.2, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm.start", step: 2, model: "openrouter/free" });
     at(7.6, { type: "step", cid: "7e33f1aa", tid: "t2", worker: 1, kind: "llm", step: 2, model: "meta-llama/llama-3.3-70b-instruct:free", seconds: 2.33, prompt_tokens: 1402, completion_tokens: 88, wants: [] });
-    at(7.7, { type: "reply", cid: "7e33f1aa", tid: "t2", worker: 1, text: "Dust chai ₹42 (250 g), Red Label ₹68, green tea ₹115. Dust sabse sasta hai.", status: "guide", tokens: 2220, seconds: 5.6, served: ["meta-llama/llama-3.3-70b-instruct:free"], steps: [] });
+    at(7.7, { type: "reply", cid: "7e33f1aa", tid: "t2", worker: 1, text: "Chai ki yeh options hain:\n**Dust chai:**\n- Society Dust 250 g — ₹42.00 (14 bache)\n- Wagh Bakri Dust 250 g — ₹48.00 (6 bache)\n**Patti chai:**\n- Red Label 250 g — ₹68.00 (21 bache)\n- Taj Mahal 250 g — ₹95.00 (4 bache)\n- Green tea 25 bags — ₹115.00 (9 bache)", status: "guide", tokens: 2220, seconds: 5.6, served: ["meta-llama/llama-3.3-70b-instruct:free"], steps: [] });
 
     at(8.0, { type: "metrics", tokens_per_min: 4204, p95: 5.6, source: "phoenix" });
 
