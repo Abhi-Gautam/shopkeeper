@@ -35,7 +35,7 @@ from agents.mcp import MCPServerStdio
 from openai.types.shared import Reasoning
 from opentelemetry.trace import Status, StatusCode
 
-from trace import PROJECT, flush, start as start_trace, turn_span
+from trace import PROJECT, flush, start as start_trace, tool_span, turn_span
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = ROOT / "models.allowlist"
@@ -112,8 +112,8 @@ class Turn:
 
 
 class Steps(RunHooks):
-    """Model-call events for the floor page and the eval runner. Phoenix
-    gets its spans from the instrumentor, not from here."""
+    """Model-call events for the page and the scores. Phoenix gets its
+    model spans from the instrumentor, not from here."""
 
     async def on_llm_start(self, context, agent, system_prompt, input_items):
         turn = context.context
@@ -204,9 +204,12 @@ class Shelf:
             queued = time.monotonic()
             async with self.pipe:
                 began = time.monotonic()
-                result = await self.server.call_tool(tool.name, arguments)
+                with tool_span(tool.name, arguments) as span:
+                    result = await self.server.call_tool(tool.name, arguments)
+                    text = "\n".join(getattr(c, "text", "") for c in result.content)
+                    span.set_attribute("output.value", text)
+                    span.set_status(Status(StatusCode.OK))
             done = time.monotonic()
-            text = "\n".join(getattr(c, "text", "") for c in result.content)
             turn.tell({"kind": "tool", "step": turn.step, "row": row,
                        "name": tool.name, "args": arguments, "result": text,
                        "seconds": round(done - began, 4),

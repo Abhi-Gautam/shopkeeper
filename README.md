@@ -33,7 +33,7 @@ Phoenix under Datasets → the `conversations-…` dataset → Experiments.
 | Path | Is |
 |---|---|
 | `agent/counter.py` | The counter: system prompt, the two tools, one turn. The SDK runs the loop and the MCP client. |
-| `agent/trace.py` | Phoenix wiring. The instrumentor writes model and tool spans; this adds `conversation` and `utterance`. |
+| `agent/trace.py` | Phoenix wiring. The OpenAI instrumentor writes model spans; this writes `conversation`, `utterance` and the tool spans. |
 | `floor/conversations.txt` | The customers. `---` starts one; `=` lines say what a good counter sells. |
 | `floor/run.py` | Plays conversations at `--arrival` per minute across `--staff` workers, on a fresh copy of the shelf. |
 | `floor/score.py` | Code scores and the Phoenix experiment upload. |
@@ -73,18 +73,14 @@ Code, not a judge. Each reads what DuckDB answered, per conversation:
 One trace per conversation in project `PHOENIX_PROJECT`:
 
 ```text
-conversation                     one customer, session.id = customer id
-└─ utterance                     one line: request_id, shopkeeper.outcome
-   └─ Agent workflow             the SDK run (the instrumentor adds two levels)
-      └─ counter                 the agent
-         └─ turn                 one model step
-            ├─ response          the model call: messages, tokens
-            └─ guide / buy       the tool call: arguments, result
+conversation          one customer, session.id = customer id
+└─ utterance          one line: request_id, shopkeeper.outcome
+   ├─ Response        a model call: messages, tokens, errors
+   └─ guide / buy     a tool call: arguments, result
 ```
 
 `shopkeeper.outcome` is `replied`, `empty` or `stuck` (4 model calls
 without an answer). The last two mark the utterance and its conversation
-as errors, so Phoenix's error chart counts failed turns. The
-instrumentor replaces the SDK's own exporter, so nothing goes to OpenAI's
-trace dashboard. If Phoenix is down, the run still plays and prints its
-scores.
+as errors, so Phoenix's error chart counts failed turns. The Agents
+SDK's own tracing is off, so nothing goes to OpenAI's trace dashboard.
+If Phoenix is down, the run still plays and prints its scores.

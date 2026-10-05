@@ -331,10 +331,12 @@ def serve_customer(shop, worker, job):
         failed = [t["outcome"] for t in out["turns"] if t["outcome"] != "replied"]
         span.set_status(otel.Status(otel.StatusCode.ERROR, ",".join(failed))
                         if failed else otel.Status(otel.StatusCode.OK))
-        trace_id = format(span.get_span_context().trace_id, "032x")
+        ids = span.get_span_context()
     out["seconds"] = round(sum(t["seconds"] for t in out["turns"]), 2)
     out["cost_usd"] = cost(shop.model, out["tokens"])
-    shop.experiment.log(index, out, began, datetime.now(timezone.utc), trace_id)
+    tracing.flush()  # the span must reach Phoenix before its annotations
+    shop.experiment.log(index, out, began, datetime.now(timezone.utc),
+                        format(ids.trace_id, "032x"), format(ids.span_id, "016x"))
 
 
 def worker_loop(shop, worker):

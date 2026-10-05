@@ -1,23 +1,26 @@
 """Send counter traffic to Phoenix. A dead collector must not stop a sale.
 
-The OpenInference Agents instrumentor turns the SDK's own trace into
-spans: the agent run, every model call (`response`) and every tool call
-(`guide` / `buy`). It replaces the SDK's default exporter, so nothing is
-uploaded to OpenAI.
+    conversation      one customer, the root of the trace; scores are
+    │                 annotations on it
+    └─ utterance      one line they said: request_id, outcome
+       ├─ Response    each model call, from the OpenInference OpenAI
+       │              instrumentor: messages, tokens, errors
+       └─ guide / buy each tool call: arguments, result
 
-On top of that, this file writes what only the counter knows:
-  conversation  one customer, the root of the trace
-  utterance     one line they said: request_id, outcome
 A turn typed at the CLI has no conversation, so its utterance is the root.
+The Agents SDK's own tracing is off: its spans only wrapped these in empty
+levels, and its default exporter uploads to OpenAI.
 The API key is never an attribute.
 """
 
+import json
 import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
+from agents import set_tracing_disabled
 from openinference.instrumentation import using_session
-from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
+from openinference.instrumentation.openai import OpenAIInstrumentor
 from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -49,7 +52,8 @@ def start():
         WithoutMcp(OTLPSpanExporter(endpoint=endpoint, timeout=2))
     )
     trace.set_tracer_provider(provider)
-    OpenAIAgentsInstrumentor().instrument(tracer_provider=provider)
+    OpenAIInstrumentor().instrument(tracer_provider=provider)
+    set_tracing_disabled(True)
 
 
 def flush():
@@ -93,4 +97,16 @@ def turn_span(request_id, utterance, model, session=None, parent=None):
             "input.value": utterance,
         },
     ) as span:
+        yield span
+
+
+@contextmanager
+def tool_span(name, arguments):
+    """One guide or buy call, timed around the MCP request itself."""
+    tracer = trace.get_tracer("shopkeeper")
+    with tracer.start_as_current_span(name, attributes={
+        "openinference.span.kind": "TOOL",
+        "tool.name": name,
+        "input.value": json.dumps(arguments),
+    }) as span:
         yield span

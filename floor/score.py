@@ -1,4 +1,5 @@
-"""Score finished conversations and log them to a Phoenix experiment.
+"""Score finished conversations: onto the conversation's trace as
+annotations, and into a Phoenix experiment as one run each.
 
 Scores are code, not a judge. They read what DuckDB answered, not how the
 reply sounds. A score is None when it does not apply: no buys to check,
@@ -126,13 +127,19 @@ class Experiment:
                 metadata=[{"index": i} for i in range(len(customers))],
             )
 
-    def log(self, index, out, started, ended, trace_id):
+    def log(self, index, out, started, ended, trace_id, span_id):
         expect = self.customers[index]["expect"]
         results = {f.__name__: f(out, expect) for f in SCORES}
         self.scores.append(results)
         if self.client is None:
             return
         try:
+            for name, (score, label, why) in results.items():
+                if score is not None:
+                    self.client.spans.add_span_annotation(
+                        span_id=span_id, annotation_name=name, annotator_kind="CODE",
+                        score=score, label=label, explanation=why,
+                    )
             run = self.client.experiments.log_run(
                 experiment_id=self.experiment["id"],
                 dataset_example_id=self.examples[index],
