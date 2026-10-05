@@ -1,64 +1,62 @@
 ---
 title: I put a model behind a grocery counter
-description: A small shop where a model can only look up the shelf or sell, the first numbers I could trust, and why it almost never sells.
+description: I built a small grocery shop with a model behind the counter. This is how it works, how I measure it, and what happened in the first full run.
 published: 2026-10-05
 project: Shopkeeper
 repository: https://github.com/Abhi-Gautam/shopkeeper
 sourceCommit: 2cb8293ff5340a1c4c98f470cc5b87579717e0f7
 ---
 
-A customer walks up to the counter and says, "A bag of rice, please." The shopkeeper checks the shelf, says what is there, and sells it.
+A customer walks up to the counter and says, "A bag of rice, please." The shopkeeper checks the shelf, tells them what is there, and sells it.
 
-I built that shop with a model behind the counter. The plan is to make it as good as it can get: right more often, faster, and cheaper. This is the starting point. Before changing anything, I wanted to know how it does now.
+I built a shop like that, with a model behind the counter. Over the next few posts I want to make it as good as I can: more correct, faster, and cheaper. Before changing anything, I needed to know how well it works today. This post is about that.
 
-## The counter can only look or sell
+## What the model can do
 
-The shelf is a DuckDB database with 2,520 products from global brands, priced in USD. About 7% of them are out of stock on purpose, so "we don't have that" is a real answer the counter has to give.
+The shelf is a DuckDB database with 2,520 products from global brands, priced in US dollars. About 7% of them are out of stock on purpose, because the shopkeeper should also be able to say "we don't have that".
 
-The model never sees the database. DuckDB runs as an MCP server, and it publishes two tools:
+The model cannot read the database directly. DuckDB runs as an MCP server and gives the model exactly two tools:
 
 | Tool | What it does |
 |---|---|
-| `guide` | Searches the shelf and returns up to 12 rows, in stock first |
-| `buy` | Sells a SKU if there is enough stock, in one transaction |
+| `guide` | Searches the shelf and returns up to 12 products, in-stock ones first |
+| `buy` | Sells a product if there is enough stock |
 
-There is no SQL tool and no third tool. If the server ever published one, the counter would refuse to start.
+The model has no way to run its own SQL. If the server ever offered a third tool, the shopkeeper would refuse to start.
 
-`buy` takes a `request_id`, and a second call with the same id does not sell again. The model never chooses that id. The counter adds one for every line the customer says, so a retried line cannot sell twice.
+Each sale carries a `request_id`. If `buy` is called again with the same id, it does not sell a second time. The model never picks this id. The shopkeeper adds a new one for every line the customer says, so a line that gets retried cannot sell twice.
 
-![The runner plays customers through the counter. The counter calls gpt-6-luna, and the guide and buy tools on the DuckDB MCP server. Every run is traced and scored in Phoenix, and can be drawn as a shop floor.](/media/shopkeeper/setup.svg)
+![The runner sends customers to the counter. The counter calls gpt-6-luna for each step and calls guide and buy on the DuckDB MCP server. Traces and scores go to Phoenix, and the run can also be shown as a shop floor.](/media/shopkeeper/setup.svg)
 
-The model is `gpt-6-luna` with reasoning set to low, run by the OpenAI Agents SDK. For each line a customer says, it gets at most four model calls to look things up, sell, and answer. It keeps the whole conversation, including what the tools returned, so "the 5 kg, if you have it" still refers to the rice from the line before.
+The model is `gpt-6-luna` from OpenAI, with reasoning set to low, and the OpenAI Agents SDK runs it. For each line a customer says, the model can make at most four calls to search, sell, and reply. It also remembers the whole conversation, including what the tools returned. So when the customer says "The 5 kg, if you have it", the model still knows which rice they were talking about.
 
-## The first numbers were about the setup, not the model
+## My first measurements were wrong
 
-The first version ran on free models through OpenRouter's free router. I collected 727 customer lines and went to read them.
+The first version used free models through OpenRouter. I collected 727 customer lines and read through them.
 
-44% had come back empty. Most of those failed in a fraction of a second, before any model answered. They were rate limits, not the model saying nothing. The free router also picked a different model for each call, so 412 of those lines were answered by more than one model. And every model call and tool call in the traces lasted about zero milliseconds, because the spans were written after each call had already returned.
+44% of the replies were empty. Most of these failed in less than a second, before any model had answered. The free models were rate limiting me. The free router also picked a different model for each call, so 412 of the lines were answered by two or more different models. On top of that, every model call and tool call showed up as taking almost no time, because my code recorded each call only after it had finished.
 
-None of that said anything about the counter. A score built on it would have measured rate limits and a random model mix.
+So the data was telling me about rate limits and a random mix of models, not about the shopkeeper. I switched to a single paid model from OpenAI. I also fixed the timing so each call is measured while it runs, and a failed call is now recorded as an error instead of an empty reply.
 
-So the counter moved to one paid model on one provider. Model calls are now timed around the real request, and a failed call shows up as an error instead of an empty reply.
+## How I watch a run
 
-## Watching a run
+There are 100 customers, each written as a short conversation in plain English. Some ask for things the shop does not sell, like phone chargers or onions. Some ask if they can pay later.
 
-The 100 customers are short conversations in plain English. Some are simple. Some ask for things the shop does not sell, like phone chargers or onions. Some ask whether they can pay later.
+Every run starts with a fresh copy of the shelf, so sales from one run never affect the next one. Customers arrive at a fixed rate, and a fixed number of workers serve them. I can also watch the run as a shop floor, with the queue at the door, the workers, and every model call and tool call as it happens.
 
-Each run plays them on a fresh copy of the shelf, so one run's sales never change the next run's stock. Customers walk in at a set rate, and a set number of workers serve them. A run can be drawn as a shop floor: the line at the door, the workers, and each model call and tool call as it happens.
-
-Every customer is one trace:
+Each customer becomes one trace in Phoenix:
 
 ```text
-conversation        one customer, with its scores
+conversation        one customer, with their scores
 └─ utterance        one line they said
-   ├─ Response      a model call: messages and tokens
-   ├─ guide         what it searched for and the rows that came back
-   └─ buy           SKU, quantity, and whether it sold
+   ├─ Response      a model call, with messages and tokens
+   ├─ guide         what the model searched for and what came back
+   └─ buy           the product, the quantity, and whether it sold
 ```
 
-The scores are code. They read what DuckDB answered, not how the reply sounds: did every line get a reply, did every sale use a SKU that `guide` had shown, did it sell when it should, and was it the right product, pack size and quantity. No model grades another model.
+The scores are plain code. They check what DuckDB actually did, not how the reply sounds. Did every line get a reply? Did every sale use a product that `guide` had shown? Did it sell when it should have? Was it the right product, size, and quantity? No model is used to grade another model.
 
-For the first ten customers, I wrote down what a good counter would sell:
+For the first ten customers, I also wrote down what the shopkeeper should end up selling:
 
 ```text
 A bag of rice, please.
@@ -66,22 +64,22 @@ The 5 kg, if you have it.
 = rice | 5 kg | 1
 ```
 
-## It always answers, and it almost never sells
+## The first run
 
-One run of all 100 customers, at 12 customers a minute with 3 workers:
+I ran all 100 customers through the shop, at 12 customers a minute with 3 workers:
 
 | | |
 |---|---|
 | Lines that got a reply | 140 of 140 |
-| Sales that used a SKU from `guide` | 20 of 20 |
+| Sales that used a product from `guide` | 20 of 20 |
 | Customers who bought anything | 14 of 100 |
-| Right items, for the six who should buy | 0 of 6 |
-| Time per line | 4.0 s median, 8.8 s p95 |
-| Cost | $0.021 for all 100 customers |
+| Customers who got exactly what they asked for, of the six with a written answer | 0 of 6 |
+| Time per line | 4.0 seconds median, 8.8 seconds at p95 |
+| Total cost | $0.021 for all 100 customers |
 
-It never failed to answer, and it never sold something it had not looked up. But only 14 of 100 customers left with anything.
+The shopkeeper replied every time, and it never sold anything it had not looked up first. But only 14 of the 100 customers left with something.
 
-The replies explain why:
+The replies show what went wrong:
 
 ```text
 > I need oil for frying. Which one is the better deal?
@@ -90,13 +88,13 @@ The replies explain why:
 < Sorry, I don't have a 1-litre frying oil in stock.
 ```
 
-Mazola Sunflower Oil, 1 L, had 13 packs on the shelf.
+The shelf had 13 packs of Mazola Sunflower Oil, 1 litre.
 
-## Most searches find nothing
+## Why it does not sell
 
-The model called `guide` 199 times. 138 of those searches came back with no rows.
+The model called `guide` 199 times, and 138 of those searches returned nothing.
 
-`guide` matches the whole query as one piece of text:
+`guide` looks for the whole search text as one exact phrase:
 
 ```sql
 WHERE (name ILIKE '%' || $query || '%'
@@ -106,20 +104,20 @@ WHERE (name ILIKE '%' || $query || '%'
   AND ($category IS NULL OR category = $category)
 ```
 
-So `sunflower oil 1 litre` finds nothing, because no product name contains that exact phrase. 104 of the empty searches were queries like that.
+A search for `sunflower oil 1 litre` finds nothing, because no product name contains those exact words in that order. 104 of the empty searches failed like this.
 
-The other 33 asked for a category that does not exist. The categories are fixed names like `tea_coffee` and `grains`. The model asked for `tea`, `cookies` and `rice`.
+The other 33 asked for a category that does not exist. The real categories have names like `tea_coffee` and `grains`, but the model asked for `tea`, `cookies`, and `rice`.
 
-When a search comes back empty, the model believes it and tells the customer the shop has none. That is where the next part starts.
+When a search comes back empty, the model believes it and tells the customer the shop does not have the item. Fixing that is where the next post starts.
 
-## What this baseline does not say
+## The limits of this run
 
-This is one run, with one model at one reasoning setting. Time per line was measured with 3 workers and 12 customers a minute, so it includes waiting for the shared DuckDB process.
+This is a single run, with one model at one reasoning setting. The times were measured with 3 workers and 12 customers a minute, so they include some waiting for the shared database.
 
-Only the first ten customers have a written expected outcome, so the right-items score covers six customers. The other scores cover all 100.
+Only the first ten customers have a written expected answer, so "got exactly what they asked for" covers just six customers. The other numbers cover all 100.
 
-The scores check what was sold. They do not check whether the reply was polite, clear, or correct about prices.
+The scores only check what was sold. They do not check whether the reply was polite, clear, or quoted the right price.
 
 ---
 
-Checked against Shopkeeper commit [`2cb8293`](https://github.com/Abhi-Gautam/shopkeeper/commit/2cb8293ff5340a1c4c98f470cc5b87579717e0f7). The relevant code is the [counter](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/run.py), and the [scores](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/score.py).
+Checked against Shopkeeper commit [`2cb8293`](https://github.com/Abhi-Gautam/shopkeeper/commit/2cb8293ff5340a1c4c98f470cc5b87579717e0f7). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/run.py), and the [scores](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/score.py).
