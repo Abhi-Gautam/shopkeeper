@@ -4,7 +4,7 @@ description: I built a small grocery shop with a model behind the counter. This 
 published: 2026-10-05
 project: Shopkeeper
 repository: https://github.com/Abhi-Gautam/shopkeeper
-sourceCommit: 2cb8293ff5340a1c4c98f470cc5b87579717e0f7
+sourceCommit: 5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f
 ---
 
 A customer walks up to the counter and says, "A bag of rice, please." The shopkeeper checks the shelf, tells them what is there, and sells it.
@@ -72,4 +72,4 @@ The item list only works because the shop is small. A store the size of Target w
 
 ---
 
-Checked against Shopkeeper commit [`2cb8293`](https://github.com/Abhi-Gautam/shopkeeper/commit/2cb8293ff5340a1c4c98f470cc5b87579717e0f7). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/run.py), and the [scores](https://github.com/Abhi-Gautam/shopkeeper/blob/2cb8293ff5340a1c4c98f470cc5b87579717e0f7/floor/score.py).
+Checked against Shopkeeper commit [`5a9b4d8`](https://github.com/Abhi-Gautam/shopkeeper/commit/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f/floor/run.py), and the [scores](https://github.com/Abhi-Gautam/shopkeeper/blob/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f/floor/score.py).
