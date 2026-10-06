@@ -4,7 +4,7 @@ description: I built a small grocery shop with a model behind the counter. This 
 published: 2026-10-05
 project: Shopkeeper
 repository: https://github.com/Abhi-Gautam/shopkeeper
-sourceCommit: 5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f
+sourceCommit: 5028e48523425e911d3ad13e161ee1d394d14fc9
 ---
 
 A customer walks up to the counter and says, "A bag of rice, please." The shopkeeper checks the shelf, tells them what is there, and sells it.
@@ -70,6 +70,10 @@ After both changes, 41 of 100 customers bought something, up from 14, and the sh
 
 The item list only works because the shop is small. A store the size of Target would not fit in a prompt, and that is the next experiment.
 
+## At Target size
+
+On a real shelf of 47,516 US products from Open Food Facts, the item list cost only $0.004 per customer, but conversations took 30 seconds and hit rate limits, so I moved the work into the tool: `guide` now ranks products by the words in their brand, name and size, the prompt lists only the departments, and all 31 test customers got the right item in about 10 seconds each, at $0.0004 per customer.
+
 ---
 
-Checked against Shopkeeper commit [`5a9b4d8`](https://github.com/Abhi-Gautam/shopkeeper/commit/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f/floor/run.py), and the [scores](https://github.com/Abhi-Gautam/shopkeeper/blob/5a9b4d83d9c6e09f7ea4bedafc9faf7fa40c906f/floor/score.py).
+Checked against Shopkeeper commit [`5028e48`](https://github.com/Abhi-Gautam/shopkeeper/commit/5028e48523425e911d3ad13e161ee1d394d14fc9). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/floor/run.py), and the [scores](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/floor/score.py).
