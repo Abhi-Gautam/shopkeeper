@@ -4,7 +4,7 @@ description: I built a grocery shop with a model behind the counter, and changed
 published: 2026-10-05
 project: Shopkeeper
 repository: https://github.com/Abhi-Gautam/shopkeeper
-sourceCommit: c403cea2c0e1f85ab3841f75fb000fafbda4bf21
+sourceCommit: e723f27d0d00dc0a7602099ccbf773a7f3513be5
 ---
 
 A customer walks up to the counter and says, "Heinz ketchup, the 32 ounce bottle." The shopkeeper checks the shelf, finds it, and sells it.
@@ -96,4 +96,4 @@ Getting the questions right took three versions, and each time the traces showed
 
 ---
 
-Checked against Shopkeeper commit [`c403cea`](https://github.com/Abhi-Gautam/shopkeeper/commit/c403cea2c0e1f85ab3841f75fb000fafbda4bf21). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/c403cea2c0e1f85ab3841f75fb000fafbda4bf21/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/c403cea2c0e1f85ab3841f75fb000fafbda4bf21/store/publish.sql), and the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/c403cea2c0e1f85ab3841f75fb000fafbda4bf21/floor/run.py).
+Checked against Shopkeeper commit [`e723f27`](https://github.com/Abhi-Gautam/shopkeeper/commit/e723f27d0d00dc0a7602099ccbf773a7f3513be5). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/e723f27d0d00dc0a7602099ccbf773a7f3513be5/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/e723f27d0d00dc0a7602099ccbf773a7f3513be5/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/e723f27d0d00dc0a7602099ccbf773a7f3513be5/floor/run.py), and the [Jev decision](https://github.com/Abhi-Gautam/shopkeeper/blob/e723f27d0d00dc0a7602099ccbf773a7f3513be5/agent/jev.py).
