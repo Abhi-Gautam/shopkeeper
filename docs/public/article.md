@@ -94,6 +94,10 @@ Getting the questions right took three versions, and each time the traces showed
 
 ![All seven versions on the same 33 customers. Customers who got the right order: 7, 6, 8 on the small shop, 7 with the item list on the full shelf, 23 with ranked search, 27 with a printed receipt, 30 with Jev deciding the sale. Seconds per customer: 5.7, 6.6, 6.7, 9.3, 5.7, 5.7, 4.0. Cost for the 33 customers: $0.0063, $0.0259, $0.0268, $0.1455, $0.0099, $0.0126, $0.0095.](/media/shopkeeper/stages.svg)
 
+## Where this leaves it
+
+A sale now waits mostly on the one gpt-6-luna call that writes the search, so what is left is a trade: OpenAI's faster tier would cut that wait at twice the price, cleaning up duplicate listings would fix a miss for free, but skipping the model's search or selling on less certain answers from Jev would only be faster by selling the wrong things, and 30 of 33 with no wrong sales is worth more than that.
+
 ---
 
 Checked against Shopkeeper commit [`e723f27`](https://github.com/Abhi-Gautam/shopkeeper/commit/e723f27d0d00dc0a7602099ccbf773a7f3513be5). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/e723f27d0d00dc0a7602099ccbf773a7f3513be5/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/e723f27d0d00dc0a7602099ccbf773a7f3513be5/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/e723f27d0d00dc0a7602099ccbf773a7f3513be5/floor/run.py), and the [Jev decision](https://github.com/Abhi-Gautam/shopkeeper/blob/e723f27d0d00dc0a7602099ccbf773a7f3513be5/agent/jev.py).
