@@ -75,6 +75,14 @@ Before you answer a customer line, work out every item they could mean and call 
 If what they ask for is not in the list, the shop does not sell it.
 """
 
+# SHOPKEEPER_PROMPT=aisles names only the departments, which stay about the
+# same size however big the shelf gets. guide does the finding.
+AISLES = """
+The shop's departments: {aisles}.
+
+Search guide with the words the customer used for each item: brand, product, flavor. One item per call; for several items, call guide for each in the same step. If the first search misses, try other words before saying the shop does not have it. Pick the size, price and quantity from the rows that come back.
+"""
+
 
 class ModelError(RuntimeError):
     """A model call that failed after the client's own retries."""
@@ -94,8 +102,8 @@ def load_dotenv():
 
 def prompt_name():
     name = os.environ.get("SHOPKEEPER_PROMPT", "base")
-    if name not in ("base", "catalog"):
-        raise SystemExit(f"SHOPKEEPER_PROMPT must be base or catalog, not {name}")
+    if name not in ("base", "catalog", "aisles"):
+        raise SystemExit(f"SHOPKEEPER_PROMPT must be base, catalog or aisles, not {name}")
     return name
 
 
@@ -108,6 +116,16 @@ def catalog_of(db):
         capture_output=True, text=True, check=True,
     ).stdout)
     return "\n".join(f"- {r['category']}: {r['items']}" for r in rows)
+
+
+def aisles_of(db):
+    """The departments, biggest first, straight from the shelf."""
+    return subprocess.run(
+        ["duckdb", "-readonly", "-noheader", "-list", str(db), "-c",
+         "SELECT string_agg(category, ', ' ORDER BY n DESC) FROM "
+         "(SELECT category, count(*) AS n FROM products GROUP BY category)"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
 
 
 def allowlisted_model():
@@ -192,6 +210,8 @@ class Shelf:
         self.instructions = SYSTEM
         if self.prompt == "catalog":
             self.instructions += CATALOG.format(catalog=catalog_of(db))
+        elif self.prompt == "aisles":
+            self.instructions += AISLES.format(aisles=aisles_of(db))
         key = os.environ.get("OPENROUTER_API_KEY", "")
         if not key:
             raise SystemExit("OPENROUTER_API_KEY is unset. Copy .env.example to .env.")

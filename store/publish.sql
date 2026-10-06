@@ -6,31 +6,34 @@
 .mode trash
 
 LOAD duckdb_mcp;
+LOAD fts;
 
+-- Ranked word search over brand, name, item and pack, from the BM25 index
+-- the Makefile builds. Words match on their own, so "Folgers decaf" finds
+-- "Classic Decaf" by Folgers. Numbers are not indexed: sizes come from rows.
 PRAGMA mcp_publish_tool(
     'guide',
-    'Look up what the shop actually has. Returns one row per item and pack size: the cheapest one in stock, and how many other products share that size (choices). Does not change stock. Call this before talking about price, packs, or substitutes, and before buy when the customer has not named a SKU.',
-    'SELECT sku, name, brand, category, pack_label,
+    'Search the shelf by words: brand, product, flavor, item. Returns the best matches first, one row per product and pack size, with price and stock. Does not change stock. Call it before talking about price, packs, or substitutes, and before buy. One item per call; call it several times at once for several items.',
+    'SELECT sku, brand, name, item, category, pack_label,
             printf(''%.2f'', price_cents / 100.0) AS price_usd,
             printf(''%.2f'', list_cents / 100.0) AS list_usd,
             stock,
-            stock > 0 AS in_stock,
-            count(*) FILTER (WHERE stock > 0) OVER (PARTITION BY item, pack_label) AS choices
-     FROM products
-     WHERE (
-         name ILIKE ''%'' || $query || ''%''
-         OR brand ILIKE ''%'' || $query || ''%''
-         OR category ILIKE ''%'' || $query || ''%''
-         OR sku ILIKE ''%'' || $query || ''%''
-       )
-       AND ($category IS NULL OR category = $category)
-     QUALIFY row_number() OVER (PARTITION BY item, pack_label ORDER BY (stock = 0), price_cents) = 1
-     ORDER BY (stock = 0), item, pack_qty
-     LIMIT LEAST(GREATEST(COALESCE($limit, 8), 1), 12)',
+            stock > 0 AS in_stock
+     FROM (
+         SELECT *, fts_main_products.match_bm25(sku, $query) AS score
+         FROM products
+         WHERE $category IS NULL OR category = $category
+     )
+     WHERE score IS NOT NULL
+     QUALIFY row_number() OVER (
+         PARTITION BY lower(brand), lower(name), pack_label
+         ORDER BY (stock = 0), price_cents) = 1
+     ORDER BY score DESC, (stock = 0), pack_qty
+     LIMIT LEAST(GREATEST(COALESCE($limit, 10), 1), 20)',
     '{
-        "query": {"type": "string", "description": "Words from the customer: item, brand, or SKU"},
+        "query": {"type": "string", "description": "Words for one item: brand and product, like \"heinz ketchup\" or \"decaf coffee\". Sizes do not help."},
         "category": {"type": "string", "description": "Optional exact category name, as the shop lists it"},
-        "limit": {"type": "integer", "description": "How many rows. Default 8, hard cap 12"}
+        "limit": {"type": "integer", "description": "How many rows. Default 10, hard cap 20"}
     }',
     '["query"]',
     'markdown'
