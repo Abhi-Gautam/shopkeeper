@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 560" role="img" aria-labelledby="stages-title stages-desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#111">
 <title id="stages-title">Every version of the shopkeeper</title>
-<desc id="stages-desc">Every version on the same 33 customers. Customers who got the right order: 7, 6, 8 on the small shop, 7 with the item list on the full shelf, 23 with ranked search, 29 with ranked search and a printed receipt. Median seconds per customer: 5.7, 6.6, 6.7, 9.3, 5.7, 5.1. Cost for the 33 customers: $0.006, $0.026, $0.027, $0.146, $0.010, $0.011.</desc>
+<desc id="stages-desc">Every version on the same 33 customers. Customers who got the right order: 7, 6, 8 on the small shop, 7 with the item list on the full shelf, 23 with ranked search, 27 with ranked search and a printed receipt. Median seconds per customer: 5.7, 6.6, 6.7, 9.3, 5.7, 5.7. Cost for the 33 customers: $0.006, $0.026, $0.027, $0.146, $0.010, $0.013.</desc>
 <text x="24" y="32" font-weight="600">Customers who got the right order, of 33</text>
 <text x="24" y="58.5" fill="#333">Phrase search <tspan fill="#777" font-size="11">small shop</tspan></text>
 <path d="M250,46 H337.2 Q341.2,46 341.2,50 V58 Q341.2,62 337.2,62 H250 Z" fill="#2a78d6"/>
@@ -18,8 +18,8 @@
 <path d="M250,134 H545.7 Q549.7,134 549.7,138 V146 Q549.7,150 545.7,150 H250 Z" fill="#2a78d6"/>
 <text x="557.7" y="146.5" fill="#333">23</text>
 <text x="24" y="168.5" fill="#333">Ranked search + receipt <tspan fill="#777" font-size="11">full shelf</tspan></text>
-<path d="M250,156 H623.9 Q627.9,156 627.9,160 V168 Q627.9,172 623.9,172 H250 Z" fill="#2a78d6"/>
-<text x="635.9" y="168.5" fill="#333">29</text>
+<path d="M250,156 H597.8 Q601.8,156 601.8,160 V168 Q601.8,172 597.8,172 H250 Z" fill="#2a78d6"/>
+<text x="609.8" y="168.5" fill="#333">27</text>
 <line x1="250" y1="46" x2="250" y2="172" stroke="#999" stroke-width="1"/>
 <text x="24" y="212" font-weight="600">Seconds per customer, median</text>
 <text x="24" y="238.5" fill="#333">Phrase search <tspan fill="#777" font-size="11">small shop</tspan></text>
@@ -38,8 +38,8 @@
 <path d="M250,314 H491.1 Q495.1,314 495.1,318 V326 Q495.1,330 491.1,330 H250 Z" fill="#2a78d6"/>
 <text x="503.1" y="326.5" fill="#333">5.7 s</text>
 <text x="24" y="348.5" fill="#333">Ranked search + receipt <tspan fill="#777" font-size="11">full shelf</tspan></text>
-<path d="M250,336 H465.3 Q469.3,336 469.3,340 V348 Q469.3,352 465.3,352 H250 Z" fill="#2a78d6"/>
-<text x="477.3" y="348.5" fill="#333">5.1 s</text>
+<path d="M250,336 H491.1 Q495.1,336 495.1,340 V348 Q495.1,352 491.1,352 H250 Z" fill="#2a78d6"/>
+<text x="503.1" y="348.5" fill="#333">5.7 s</text>
 <line x1="250" y1="226" x2="250" y2="352" stroke="#999" stroke-width="1"/>
 <text x="24" y="392" font-weight="600">Cost for the 33 customers</text>
 <text x="24" y="418.5" fill="#333">Phrase search <tspan fill="#777" font-size="11">small shop</tspan></text>
@@ -58,7 +58,7 @@
 <path d="M250,494 H274.4 Q278.4,494 278.4,498 V506 Q278.4,510 274.4,510 H250 Z" fill="#2a78d6"/>
 <text x="286.4" y="506.5" fill="#333">$0.010</text>
 <text x="24" y="528.5" fill="#333">Ranked search + receipt <tspan fill="#777" font-size="11">full shelf</tspan></text>
-<path d="M250,516 H278.1 Q282.1,516 282.1,520 V528 Q282.1,532 278.1,532 H250 Z" fill="#2a78d6"/>
-<text x="290.1" y="528.5" fill="#333">$0.011</text>
+<path d="M250,516 H282.1 Q286.1,516 286.1,520 V528 Q286.1,532 282.1,532 H250 Z" fill="#2a78d6"/>
+<text x="294.1" y="528.5" fill="#333">$0.013</text>
 <line x1="250" y1="406" x2="250" y2="532" stroke="#999" stroke-width="1"/>
 </svg>

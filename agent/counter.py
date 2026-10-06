@@ -61,6 +61,9 @@ TIMEOUT_SECONDS = 60
 ERROR_CHARS = 500
 REPLY_CHARS = 4000
 REQUEST_ID = "request_id"
+# One sale key per customer message and product: a retried message cannot
+# sell twice, and two products in one message are two sales, not a replay.
+SALE_KEY = "{request_id}:{sku}"
 REST = "rest"
 RECEIPT_SPAN = "receipt"
 
@@ -278,8 +281,8 @@ class Shelf:
                 turn.offers.update({offer.sku: offer for offer in offers_of(text)})
                 return text
             args = BuyArgs.model_validate_json(raw)
-            text = await self.call(turn, name, BuyRequest(sku=args.sku, qty=args.qty,
-                                                          request_id=turn.request_id))
+            key = SALE_KEY.format(request_id=turn.request_id, sku=args.sku)
+            text = await self.call(turn, name, BuyRequest(sku=args.sku, qty=args.qty, request_id=key))
             result = buy_result_of(text)
             if result.status == BuyStatus.SOLD:
                 turn.sales.append(Sale(offer=turn.offers.get(args.sku), result=result,

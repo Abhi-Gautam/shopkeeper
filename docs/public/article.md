@@ -72,9 +72,13 @@ So I changed two things. A customer naming a product is now an order: when exact
 
 ![After: the model searches and sells when one product fits, the counter prints the receipt, and the model is called again only if the customer asked something else. A sale takes two model calls.](/media/shopkeeper/flow-after.svg)
 
-29 of 33 customers got the right order. A customer took 5.1 seconds, and the run cost $0.011. Three of the four that went wrong are a new kind of mistake: the shopkeeper sold on the first message, and then treated the customer's next message, like "Two of them", as another order. That customer got three pizzas instead of two. The fourth asked for Campbell's cream of mushroom without a size, and the shopkeeper asked which one.
+27 of 33 customers got the right order, up from 23. A message with a sale now takes 2.1 model calls instead of 2.5, and 4.3 seconds instead of 4.8. A whole customer still takes about 5.7 seconds, and the run cost $0.013, because more customers buy.
 
-![All five versions on the same 33 customers. Customers who got the right order: 7, 6, 8 on the small shop, 7 with the item list on the full shelf, 23 with ranked search, 29 with ranked search and a printed receipt. Seconds per customer: 5.7, 6.6, 6.7, 9.3, 5.7, 5.1. Cost for the 33 customers: $0.006, $0.026, $0.027, $0.146, $0.010, $0.011.](/media/shopkeeper/stages.svg)
+The six that went wrong show the next problem. Four customers got too much: the shopkeeper sold on their first message, and then treated their next one, like "Just one box" or "The cheapest one", as another order. The other two asked for something with two near-identical choices, like two Goya chickpea listings at different prices, and the shopkeeper asked which one.
+
+Reading these traces also caught a bug that no score would have. Every sale in one customer message shared one idempotency key, so when a customer asked for ketchup and mustard together, the mustard was reported as sold but never left the shelf. Each sale now has its own key, and the numbers above are from the run after the fix.
+
+![All five versions on the same 33 customers. Customers who got the right order: 7, 6, 8 on the small shop, 7 with the item list on the full shelf, 23 with ranked search, 27 with ranked search and a printed receipt. Seconds per customer: 5.7, 6.6, 6.7, 9.3, 5.7, 5.7. Cost for the 33 customers: $0.006, $0.026, $0.027, $0.146, $0.010, $0.013.](/media/shopkeeper/stages.svg)
 
 Next is the selling decision itself: knowing when an order is complete before selling it.
 
