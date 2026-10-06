@@ -93,4 +93,4 @@ COPY (
              ELSE 2 + CAST(hash(code || 'qty') % 40 AS INT) END AS stock
     FROM aisled
     ORDER BY category, item, name
-) TO 'store/big.csv' (HEADER);
+) TO 'store/products.csv' (HEADER);

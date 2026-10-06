@@ -1,79 +1,83 @@
 ---
 title: I put a model behind a grocery counter
-description: I built a small grocery shop with a model behind the counter. This is how it works and how I measure it.
+description: I built a grocery shop with a model behind the counter, and changed it one step at a time on the same shelf and the same customers.
 published: 2026-10-05
 project: Shopkeeper
 repository: https://github.com/Abhi-Gautam/shopkeeper
 sourceCommit: 5028e48523425e911d3ad13e161ee1d394d14fc9
 ---
 
-A customer walks up to the counter and says, "A bag of rice, please." The shopkeeper checks the shelf, tells them what is there, and sells it.
+A customer walks up to the counter and says, "Heinz ketchup, the 32 ounce bottle." The shopkeeper checks the shelf, finds it, and sells it.
 
-I built a shop like that, with a model behind the counter. Over the next few posts I want to make it as good as I can: more correct, faster, and cheaper. Before changing anything, I needed to know how well it works today. This post is about that.
+I built a shop like that, with a model behind the counter, and I want to make it as good as I can: more correct, faster, and cheaper. This post is how it works, how I judge it, and the five versions it went through.
 
-## What the model can do
+## The shop
 
-The shelf is a DuckDB database with 2,520 products from global brands, priced in US dollars. About 7% of them are out of stock on purpose, because the shopkeeper should also be able to say "we don't have that".
+The shelf is real. It has 47,516 US grocery products from Open Food Facts, with their real brands, names and pack sizes, like "Dave's Killer Bread Good Seed, 27 oz". Prices and stock are not in that data, so I made them up, and about 7% of products are out of stock on purpose, because the shopkeeper should also be able to say "we don't have that". The first versions ran on a small shop of 2,520 products taken from the same shelf.
 
 The model cannot read the database directly. DuckDB runs as an MCP server and gives the model exactly two tools:
 
 | Tool | What it does |
 |---|---|
-| `guide` | Searches the shelf and returns up to 12 products, in-stock ones first |
+| `guide` | Searches the shelf and returns matching products with their size, price and stock |
 | `buy` | Sells a product if there is enough stock |
 
-The model has no way to run its own SQL.
+The model has no way to run its own SQL. How `guide` searches is the thing that changed the most.
 
-![The runner sends customers to the counter. The counter calls gpt-6-luna for each step and calls guide and buy on the DuckDB MCP server. Traces and scores go to Phoenix, and the run can also be shown as a shop floor.](/media/shopkeeper/setup.svg)
+![The runner sends customers to the counter. The counter calls gpt-6-luna and calls guide and buy on the DuckDB MCP server. Every customer becomes a trace in Phoenix, and a run can also be shown as a shop floor.](/media/shopkeeper/setup.svg)
 
-The model is `gpt-6-luna` from OpenAI, with reasoning set to low, and the OpenAI Agents SDK runs it. For each line a customer says, the model can make at most four calls to search, sell, and reply. It also remembers the whole conversation, including what the tools returned. So when the customer says "The 5 kg, if you have it", the model still knows which rice they were talking about.
+The model is `gpt-6-luna` from OpenAI, with reasoning set to low, and the OpenAI Agents SDK runs it. For each thing a customer says, the model can make at most four calls to search, sell, and reply. It also remembers the whole conversation, including what the tools returned. So when the customer says "The cheapest one", the model still knows they were talking about jasmine rice.
 
-## How I watch a run
+## How I judge a run
 
-There are 100 customers, each written as a short conversation in plain English. Some ask for things the shop does not sell, like phone chargers or onions. Some ask if they can pay later.
+There are 33 customers, each a short conversation in plain English. Most of them want something specific, like two bags of Doritos Spicy Nacho in the 9.25 ounce size. Some want something that is out of stock, some ask for things a grocery shop does not sell, like phone chargers, and one asks to pay next week. Next to every customer I wrote down the order a good shopkeeper ends up selling, or that nothing should be sold.
 
-Every run starts with a fresh copy of the shelf, so sales from one run never affect the next one. Customers arrive at a fixed rate, and a fixed number of workers serve them. I can also watch the run as a shop floor, with the queue at the door, the workers, and every model call and tool call as it happens.
+Every run starts with a fresh copy of the shelf, so sales from one run never affect the next one. Ten customers are served at once. I can also watch a run as a shop floor, with the queue at the door, the workers, and every model call and tool call as it happens.
 
 ![The shop floor during a run, with customers at the counter, the workers, and the replies as they come in.](/media/shopkeeper/floor.mp4)
 
-Each customer becomes one trace in Phoenix. Under the conversation, every line the customer said has its model calls and tool calls, with their timings, tokens, and inputs and outputs. The scores are attached to the conversation.
+Each customer becomes one trace in Phoenix: everything they said, every model call and tool call under it, with timings, tokens, inputs and outputs. Nothing is scored in code. After each run, Claude reads every conversation in Phoenix next to the order written for that customer, and says which ones went right and why. A customer counts as right only if they got exactly their order, nothing missing and nothing extra, or were correctly sold nothing.
 
-![One customer in Phoenix. The conversation has one line, two model calls and two guide searches, and the answered, cost and seconds scores.](/media/shopkeeper/phoenix-conversation.png)
+## The first shop
 
-The scores are plain code. They check what DuckDB actually did, not how the reply sounds. Did every line get a reply? Did every sale use a product that `guide` had shown? Did it sell when it should have? Was it the right product, size, and quantity? No model is used to grade another model.
+The first version ran on the small shop. `guide` matched the customer's words as one exact phrase against a product's name or brand, and returned the 12 cheapest matches.
 
-## What the first run showed
+7 of the 33 customers got the right order. Six of those were the customers who should not buy anything. The model put the whole request into one search, like "Heinz ketchup 32 ounce bottle", and since no product name contains that exact phrase, almost every search came back empty. The model believed the empty search and told the customer we did not have it.
 
-As expected for a first run, things went wrong, and most of it was the search tool, not the model. It kept missing products we had, so about half of the customers were told we didn't have something that was on the shelf.
+## Putting the item list in the prompt
 
-- The search matched only an exact phrase. "rice" worked, but "rice 5 kg" found nothing, and 116 of 171 searches came back empty.
-- The model believed an empty search and told the customer we were out.
-- Results came back cheapest first, 12 at most, so bigger packs like 5 kg rice never showed up.
-- The model made up categories, like `tea`, and shop rules, like "we don't deliver".
+Next I put the list of everything the shop sells into the prompt, every product type under its department, and asked the model to search with those item names. Then I changed `guide` to return one row for each item and size, the cheapest one, instead of the 12 cheapest products.
 
-| | |
-|---|---|
-| Customers who bought anything | 14 of 100 |
-| Wait per line | 4.0 s median, 8.8 s p95, almost all of it the model |
-| Tokens per customer | about 1,700 in, 108 out |
-| Cost | $0.021 for all 100 customers |
+Neither helped. 6 and then 8 customers got the right order. On real data the item names are labels like "Sour creams" or "Canned chickpeas", and they are not words in the product names, so searching with them still found nothing. Worse, the shopkeeper started selling whatever did come back: whole grain naan for someone who asked for Dave's Killer Bread, and corn chips for someone who asked for Doritos.
 
-Speed and cost are fine for now. The search comes first.
+The list also does not scale. On the full shelf of 47,516 products it is about 27,000 tokens in every model call. The 33 customers cost $0.15 instead of $0.03, a customer took 9.3 seconds instead of 6.7, and 7 of 33 got the right order.
 
-## What changed in the next two runs
+## Ranked search
 
-I made two changes. First, I put the list of everything the shop sells into the prompt, about 100 item names under their categories, and asked the model to work out every item a customer could mean and search for all of them at once. Second, I changed the search so it returns one row for each item and size, instead of the 12 cheapest products, so a 5 kg bag of rice can actually show up.
+So I moved the work out of the prompt and into the tool. `guide` now ranks products by how well the words in their brand, name, type and size match what the model searched for, with BM25 over a full-text index in DuckDB, and returns the best ten. "Folgers decaf" finds "Classic Decaf" by Folgers, and "Cheez-It 21" puts the 21 oz box first. The prompt lists only the store's departments, about 700 characters, however big the shelf gets.
 
-![Three runs compared. Customers who bought something went from 14% to 33% to 41%. Lines where the shopkeeper said we don't have it went from 63% to 8% to 5%. Searches that found nothing went from 68% to 3% to 5%.](/media/shopkeeper/runs.svg)
+On the full shelf, 23 of 33 customers got the right order, with no wrong sales at all. The search found the right product for every customer. The 33 customers cost $0.010, and a customer took 5.7 seconds.
 
-After both changes, 41 of 100 customers bought something, up from 14, and the shopkeeper said we didn't have something in 7 lines instead of 88. Of the six customers with a written order, five got exactly what they asked for, up from none. A line still takes about the same time, around 4.5 seconds, but the 100 customers cost $0.038 instead of $0.021, because the item list goes into every model call.
+That closes the work on search. Every fix that worked was the same kind of fix: when the shopkeeper got something wrong, the problem was what the tool gave the model, not what the prompt told it. An exact phrase match hid products the shop had, and a list of item names only worked while the names were clean and the shop was small. A ranked search finds the product from the customer's own words at any size of shop, in about 10 milliseconds. Almost all of the time left is the model.
 
-The item list only works because the shop is small. A store the size of Target would not fit in a prompt, and that is the next experiment.
+## The steps around the tools
 
-## At Target size
+All 10 customers who still went wrong had named a product the search found. The model did every step of a sale itself. It searched, then it decided whether to sell, and once the sale went through, it was called once more just to read the sale back to the customer.
 
-On a real shelf of 47,516 US products from Open Food Facts, the item list cost only $0.004 per customer, but conversations took 30 seconds and hit rate limits, so I moved the work into the tool: `guide` now ranks products by the words in their brand, name and size, the prompt lists only the departments, and all 31 test customers got the right item in about 10 seconds each, at $0.0004 per customer.
+![Before: the customer's message goes to the model, which searches, reads the rows and calls buy, and then the model is called again to write the reply. A sale took three model calls.](/media/shopkeeper/flow-before.svg)
+
+The prompt told the model to sell only when the customer asked to buy. So when a customer said "Heinz ketchup, the 32 ounce bottle", it quoted the price and asked "Would you like it?", and those 10 customers left without their order. And every sale spent one more model call, about two seconds, on a sentence that only repeated what was sold.
+
+So I changed two things. A customer naming a product is now an order: when exactly one product fits, the shopkeeper sells it. And once the sale goes through, the counter prints the receipt itself instead of asking the model to write it. If the customer asked something else in the same message, like "and do you deliver?", only that part goes back to the model, after the sale.
+
+![After: the model searches and sells when one product fits, the counter prints the receipt, and the model is called again only if the customer asked something else. A sale takes two model calls.](/media/shopkeeper/flow-after.svg)
+
+29 of 33 customers got the right order. A customer took 5.1 seconds, and the run cost $0.011. Three of the four that went wrong are a new kind of mistake: the shopkeeper sold on the first message, and then treated the customer's next message, like "Two of them", as another order. That customer got three pizzas instead of two. The fourth asked for Campbell's cream of mushroom without a size, and the shopkeeper asked which one.
+
+![All five versions on the same 33 customers. Customers who got the right order: 7, 6, 8 on the small shop, 7 with the item list on the full shelf, 23 with ranked search, 29 with ranked search and a printed receipt. Seconds per customer: 5.7, 6.6, 6.7, 9.3, 5.7, 5.1. Cost for the 33 customers: $0.006, $0.026, $0.027, $0.146, $0.010, $0.011.](/media/shopkeeper/stages.svg)
+
+Next is the selling decision itself: knowing when an order is complete before selling it.
 
 ---
 
-Checked against Shopkeeper commit [`5028e48`](https://github.com/Abhi-Gautam/shopkeeper/commit/5028e48523425e911d3ad13e161ee1d394d14fc9). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/store/publish.sql), the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/floor/run.py), and the [scores](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/floor/score.py).
+Checked against Shopkeeper commit [`5028e48`](https://github.com/Abhi-Gautam/shopkeeper/commit/5028e48523425e911d3ad13e161ee1d394d14fc9). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/store/publish.sql), and the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/5028e48523425e911d3ad13e161ee1d394d14fc9/floor/run.py).

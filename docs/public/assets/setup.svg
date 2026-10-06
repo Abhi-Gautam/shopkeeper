@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" role="img" aria-labelledby="setup-title setup-desc" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#111">
   <title id="setup-title">Shopkeeper setup</title>
-  <desc id="setup-desc">Customer conversations go to the runner, which sends each line to the counter. The counter calls the model through the OpenAI Agents SDK and calls the guide and buy tools on a DuckDB MCP server. Traces and scores go to Phoenix, and the runner can also draw the shop floor page.</desc>
+  <desc id="setup-desc">Customer conversations go to the runner, which sends each line to the counter. The counter calls the model through the OpenAI Agents SDK and calls the guide and buy tools on a DuckDB MCP server. Every customer becomes a trace in Phoenix, and the runner can also draw the shop floor page.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#111"/>
@@ -25,7 +25,7 @@
     <line x1="335" y1="216" x2="335" y2="246"/>
   </g>
   <g text-anchor="middle">
-    <text x="95" y="64">100 customers</text>
+    <text x="95" y="64">33 customers</text>
     <text x="95" y="82" fill="#555">conversations</text>
     <text x="335" y="64">runner</text>
     <text x="335" y="82" fill="#555">fresh shelf per run</text>
@@ -38,7 +38,7 @@
     <text x="95" y="274">shop floor page</text>
     <text x="95" y="292" fill="#555">optional view</text>
     <text x="335" y="274">Phoenix</text>
-    <text x="335" y="292" fill="#555">traces, scores</text>
+    <text x="335" y="292" fill="#555">one trace each</text>
   </g>
   <g fill="#555" font-size="12">
     <text x="458" y="170" text-anchor="middle">guide</text>

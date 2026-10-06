@@ -2,10 +2,11 @@
 
     conversation      one customer, the root of the trace; scores are
     │                 annotations on it
-    └─ utterance      one line they said: request_id, outcome
+    └─ utterance      one message they said: request_id, outcome
        ├─ Response    each model call, from the OpenInference OpenAI
        │              instrumentor: messages, tokens, errors
-       └─ guide / buy each tool call: arguments, result
+       ├─ guide / buy each tool call: arguments, result
+       └─ receipt     the sale the counter printed, in the receipt flow
 
 A turn typed at the CLI has no conversation, so its utterance is the root.
 The Agents SDK's own tracing is off: its spans only wrapped these in empty
@@ -61,8 +62,9 @@ def flush():
 
 
 @contextmanager
-def conversation_span(session, lines):
-    """One customer, start to finish. Always the root of its trace."""
+def conversation_span(session, lines, run=None):
+    """One customer, start to finish. Always the root of its trace.
+    `run` names the run it belongs to, so runs side by side stay apart."""
     tracer = trace.get_tracer("shopkeeper")
     with using_session(session), tracer.start_as_current_span(
         "conversation",
@@ -70,6 +72,7 @@ def conversation_span(session, lines):
         attributes={
             "openinference.span.kind": "CHAIN",
             "session.id": session,
+            "shopkeeper.run": run or SESSION,
             "input.value": "\n".join(lines),
         },
     ) as span:
@@ -108,5 +111,16 @@ def tool_span(name, arguments):
         "openinference.span.kind": "TOOL",
         "tool.name": name,
         "input.value": json.dumps(arguments),
+    }) as span:
+        yield span
+
+
+@contextmanager
+def step_span(name, output):
+    """A step the counter does in code, like printing a receipt."""
+    tracer = trace.get_tracer("shopkeeper")
+    with tracer.start_as_current_span(name, attributes={
+        "openinference.span.kind": "CHAIN",
+        "output.value": output,
     }) as span:
         yield span

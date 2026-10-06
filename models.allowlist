@@ -1,5 +1,0 @@
-# Models the counter may run. Prices per 1M tokens (input / cached / output)
-# are in floor/score.py, checked 2026-10-05 on OpenAI's pricing page.
-gpt-6-luna
-gpt-5.6-luna
-gpt-5-nano

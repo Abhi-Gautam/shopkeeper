@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""Play conversations through the counter, score them, optionally draw them.
+"""Play conversations through the counter, optionally draw them.
 
-    .venv/bin/python floor/run.py --limit 10         # score the first ten
+    .venv/bin/python floor/run.py --limit 10         # the first ten
     .venv/bin/python floor/run.py --limit 10 --ui    # same, watched at :8787
 
 Each conversation in conversations.txt is one customer. They walk in at
 --arrival per minute and --staff workers serve them, so a run is also a
-load test: latency is measured under that load, and the experiment
-records both knobs.
+load test: latency is measured under that load.
 
 A run plays on a fresh copy of the shelf, so no run sees another's sales.
-Every finished conversation is scored (score.py) and logged to one Phoenix
-experiment, and is one trace in PHOENIX_PROJECT.
+Every conversation is one trace in PHOENIX_PROJECT; the traces are what
+gets read and judged.
 
 With --ui the page follows the same events, live. Nothing on it is
 invented: token counts come from the usage block, step timings from
@@ -20,7 +19,6 @@ around the calls, and tool fields from what DuckDB answered.
 
 import argparse
 import json
-import os
 import queue
 import shutil
 import sys
@@ -39,16 +37,15 @@ sys.path.insert(0, str(ROOT / "agent"))
 import counter  # noqa: E402
 import trace as tracing  # noqa: E402
 from opentelemetry import trace as otel  # noqa: E402
-from score import Experiment, cost  # noqa: E402
+from models import BuyStatus, Tool, buy_result_of, offers_of  # noqa: E402
 
 UI = ROOT / "ui"
-LINES = Path(__file__).with_name(
-    "conversations-big.txt" if counter.SHOP == "big" else "conversations.txt")
+LINES = Path(__file__).with_name("conversations.txt")
 HOST = "127.0.0.1"
 PORT = 8787
 PHOENIX = "http://127.0.0.1:6006"
 MAX_WAIT = 8  # customers the line can hold; the next one waits at the door
-WORKERS = 3
+WORKERS = 10
 KEEP = 1400  # events held for a page that reloads
 
 
@@ -77,75 +74,39 @@ def load_customers(limit):
 
 # --- reading what DuckDB said -------------------------------------------
 
-def markdown_rows(text):
-    """Rows out of the markdown table the guide tool returns."""
-    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip().startswith("|")]
-    if len(lines) < 2:
-        return []
-
-    def cells(line):
-        return [c.strip() for c in line.strip("|").split("|")]
-
-    header = cells(lines[0])
-    rows = []
-    for line in lines[2:]:  # past the |---| rule
-        values = cells(line)
-        if len(values) == len(header):
-            rows.append(dict(zip(header, values)))
-    return rows
-
-
-def _int(value):
-    try:
-        return int(float(str(value).strip()))
-    except (TypeError, ValueError):
-        return 0
-
-
 def guide_fields(result):
     """What the page shows for a guide call: how much the shelf offered."""
-    rows = markdown_rows(result)
-    offered = [{"name": r.get("name", ""), "pack": r.get("pack_label", ""),
-                "price": r.get("price_usd", ""), "stock": _int(r.get("stock")),
-                "sku": r.get("sku", "")} for r in rows]
-    in_stock = sum(1 for r in rows if r.get("in_stock") == "true")
-    return {"rows": len(rows), "in_stock": in_stock, "offered": offered[:6]}
+    offers = offers_of(result)
+    return {"rows": len(offers),
+            "in_stock": sum(offer.in_stock for offer in offers),
+            "offered": [{"name": o.name, "pack": o.pack_label, "price": str(o.price_usd),
+                         "stock": o.stock, "sku": o.sku} for o in offers[:6]]}
 
 
 def buy_fields(result):
     """status / sku / qty / price / stock_left out of the buy result."""
-    try:
-        row = json.loads(result)[0]
-    except (json.JSONDecodeError, TypeError, IndexError, KeyError):
-        return {"status": "unknown", "sku": "", "qty": 0, "price": "", "stock_left": 0}
-    return {
-        "status": row.get("status") or "unknown",
-        "sku": row.get("sku") or "",
-        "qty": _int(row.get("qty_sold")),
-        "price": row.get("price_usd") or "",
-        "stock_left": _int(row.get("stock_left")),
-    }
+    sold = buy_result_of(result)
+    return {"status": sold.status, "sku": sold.sku or "", "qty": sold.qty_sold,
+            "price": str(sold.price_usd or ""), "stock_left": sold.stock_left or 0}
 
 
 def status_of(steps, reply):
     """The page's grade for one turn is the shelf result, not the sentence."""
     for step in steps:
-        if step["kind"] == "tool" and step["name"] == "buy":
+        if step["kind"] == "tool" and step["name"] == Tool.BUY:
             status = step["buy"]["status"]
-            if status == "sold":
+            if status == BuyStatus.SOLD:
                 return "sold"
-            if status in ("out_of_stock", "unknown_sku", "bad_qty"):
+            if status in (BuyStatus.OUT_OF_STOCK, BuyStatus.UNKNOWN_SKU, BuyStatus.BAD_QTY):
                 return "out"
     return "error" if reply == counter.STUCK else "guide"
 
 
 class Shop:
-    def __init__(self, customers, model, staff, arrival, experiment):
+    def __init__(self, customers, staff, arrival):
         self.customers = customers
-        self.model = model
         self.staff = staff
         self.arrival = arrival
-        self.experiment = experiment
         self.line = queue.Queue(maxsize=MAX_WAIT)
         self.left = len(customers)  # conversations not yet finished
         self.finished = threading.Event()
@@ -160,6 +121,7 @@ class Shop:
         self.work = Path(tempfile.mkdtemp(prefix="shelf-"))
         shutil.copy(counter.DB, self.work / "shop.duckdb")
         self.shelf = counter.Shelf(self.work / "shop.duckdb")
+        self.model = self.shelf.model
 
     def close(self):
         self.shelf.close()
@@ -235,8 +197,7 @@ class Shop:
 
 
 def serve_one(shop, worker, cid, tid, ask, history, parent):
-    """One utterance. Streams its steps; returns the reply event and the
-    raw step events, tool results included, for scoring."""
+    """One utterance. Streams its steps; returns the reply event."""
     raw, steps = [], []
     started = time.monotonic()
 
@@ -244,7 +205,7 @@ def serve_one(shop, worker, cid, tid, ask, history, parent):
         raw.append(event)
         out = {"type": "step", "cid": cid, "tid": tid, "worker": worker, **event}
         if event["kind"] == "tool":
-            parse = guide_fields if event["name"] == "guide" else buy_fields
+            parse = guide_fields if event["name"] == Tool.GUIDE else buy_fields
             out[event["name"]] = parse(out.pop("result"))
         if event["kind"] in ("llm", "tool"):
             steps.append(out)
@@ -252,7 +213,7 @@ def serve_one(shop, worker, cid, tid, ask, history, parent):
 
     error = None
     try:
-        reply = counter.turn(shop.shelf, shop.model, history, ask, tid,
+        reply = counter.turn(shop.shelf, history, ask, tid,
                              watch, session=cid, parent=parent)
     except counter.ModelError as exc:
         # The client already retried 429s and timeouts. This one is final.
@@ -270,17 +231,15 @@ def serve_one(shop, worker, cid, tid, ask, history, parent):
         "served": [shop.model],
         "steps": steps,
     }
-    return event, raw, reply, error
+    return event, reply, error
 
 
 def serve_customer(shop, worker, job):
     """A whole conversation on one worker, one memory, one trace."""
     cid, index = job["id"], job["index"]
     lines = shop.customers[index]["lines"]
-    history, shown = [], {}
-    out = {"turns": [], "buys": [], "tokens": {"in": 0, "cached": 0, "out": 0}}
-    began = datetime.now(timezone.utc)
-    with tracing.conversation_span(cid, lines) as span:
+    history, failed, reply = [], [], ""
+    with tracing.conversation_span(cid, lines, shop.name) as span:
         parent = otel.set_span_in_context(span)
         for n, ask in enumerate(lines):
             if shop.stop.is_set():
@@ -293,52 +252,17 @@ def serve_customer(shop, worker, job):
             shop.emit({"type": "assign", "cid": cid, "tid": tid, "worker": worker,
                        "turn": n + 1, "turns": len(lines),
                        "waited": job["waited"] if n == 0 else 0.0})
-            event, raw, reply, error = serve_one(shop, worker, cid, tid, ask,
-                                                 history, parent)
+            event, reply, error = serve_one(shop, worker, cid, tid, ask, history, parent)
             shop.emit(event)
             shop.record(event)
-            for step in raw:
-                if step["kind"] == "llm":
-                    out["tokens"]["in"] += step["prompt_tokens"]
-                    out["tokens"]["cached"] += step["cached_tokens"]
-                    out["tokens"]["out"] += step["completion_tokens"]
-                elif step["kind"] == "tool" and step["name"] == "guide":
-                    shown.update({r["sku"]: r for r in markdown_rows(step["result"])})
-                elif step["kind"] == "tool" and step["name"] == "buy":
-                    sku = step["args"].get("sku")
-                    row = shown.get(sku, {})
-                    out["buys"].append({
-                        "sku": sku,
-                        "qty": step["args"].get("qty"),
-                        "status": buy_fields(step["result"])["status"],
-                        "grounded": sku in shown,
-                        "name": row.get("name"),
-                        "brand": row.get("brand"),
-                        "pack_label": row.get("pack_label"),
-                    })
-            out["turns"].append({
-                "said": ask,
-                "reply": reply,
-                "outcome": "error" if error else
-                           "stuck" if reply == counter.STUCK else
-                           "replied" if reply.strip() else "empty",
-                "error": error,
-                "seconds": event["seconds"],
-                "model_calls": sum(1 for s in raw if s["kind"] == "llm"),
-            })
+            if error or reply == counter.STUCK or not reply.strip():
+                failed.append(error or reply or "empty")
             if error:
                 break
             time.sleep(1.4)  # the customer reads the reply
-        span.set_attribute("output.value", out["turns"][-1]["reply"][:4000])
-        failed = [t["outcome"] for t in out["turns"] if t["outcome"] != "replied"]
-        span.set_status(otel.Status(otel.StatusCode.ERROR, ",".join(failed))
+        span.set_attribute("output.value", reply[:4000])
+        span.set_status(otel.Status(otel.StatusCode.ERROR, "; ".join(failed)[:500])
                         if failed else otel.Status(otel.StatusCode.OK))
-        ids = span.get_span_context()
-    out["seconds"] = round(sum(t["seconds"] for t in out["turns"]), 2)
-    out["cost_usd"] = cost(shop.model, out["tokens"])
-    tracing.flush()  # the span must reach Phoenix before its annotations
-    shop.experiment.log(index, out, began, datetime.now(timezone.utc),
-                        format(ids.trace_id, "032x"), format(ids.span_id, "016x"))
 
 
 def worker_loop(shop, worker):
@@ -494,27 +418,22 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--limit", type=int, help="first N conversations only")
-    parser.add_argument("--staff", type=int, default=2, help=f"workers, 1-{WORKERS}")
-    parser.add_argument("--arrival", type=int, default=12, help="customers per minute")
+    parser.add_argument("--staff", type=int, default=10, help=f"workers, 1-{WORKERS}")
+    parser.add_argument("--arrival", type=int, default=120, help="customers per minute")
     parser.add_argument("--ui", action="store_true", help=f"serve the page on :{PORT}")
+    parser.add_argument("--label", default="", help="added to the run's name in Phoenix")
     args = parser.parse_args()
 
     counter.load_dotenv()
-    model = counter.allowlisted_model()
     customers = load_customers(args.limit)
     if not customers:
         raise SystemExit(f"no conversations in {LINES.name}")
     tracing.start()
-    effort = os.environ.get("OPENROUTER_REASONING_EFFORT") or "default"
-    prompt = counter.prompt_name()
-    name = f"{model}-{effort}-{prompt}-{counter.SHOP}-{time.strftime('%m%d-%H%M')}"
-    experiment = Experiment(PHOENIX, customers, name, {
-        "model": model, "reasoning": effort, "prompt": prompt, "shop": counter.SHOP,
-        "staff": args.staff, "arrival_per_min": args.arrival,
-        "project": tracing.PROJECT,
-    })
-    shop = Shop(customers, model, max(1, min(WORKERS, args.staff)),
-                args.arrival, experiment)
+    shop = Shop(customers, max(1, min(WORKERS, args.staff)), args.arrival)
+    settings = shop.shelf.settings
+    name = shop.name = (f"{shop.model}-{settings.effort or 'default'}"
+                        f"-{settings.flow}{'-' + args.label if args.label else ''}"
+                        f"-{time.strftime('%m%d-%H%M%S')}")
     httpd = None
     if args.ui:
         Handler.shop = shop
@@ -534,7 +453,7 @@ def main():
     shop.emit({"type": "config", "staff": shop.staff, "arrival": shop.arrival})
     try:
         shop.finished.wait()
-        print(experiment.summary())
+        print(f"{name}: done. traces in {PHOENIX} project {tracing.PROJECT}", file=sys.stderr)
         if httpd:
             print("run finished; page stays up until Ctrl-C", file=sys.stderr)
             shop.stop.wait()

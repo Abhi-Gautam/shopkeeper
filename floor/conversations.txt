@@ -1,262 +1,122 @@
-# Plain global English. One customer turn per line.
-# A line of --- starts a new customer; the lines after it share a memory.
-# Some asks are off the shelf on purpose (chargers, fresh produce, a mop).
+# One customer per block. A line of --- starts a new customer; the lines
+# after it are what they say, in order, and share one memory.
 #
-# `= name | pack | qty` is what a good counter ends up selling, one line
-# per item. Fields split on " | "; name is a regex, pack `-` means any. `= none` means no sale is
-# right. Conversations without `=` are still played and scored for
-# replies, grounding, time and cost, just not for the sale.
-#
-# The first ten carry outcomes: `floor/run.py --limit 10` scores them.
+# `= name | pack | qty` is the order a good shopkeeper ends up selling, one
+# line per item: name is a regex over brand and product name, pack `-` means
+# any size. `= none` means no sale is right. Every product asked for is
+# really on the shelf, or really not.
 
 ---
-A bag of rice, please.
-The 5 kg, if you have it.
-= rice | 5 kg | 1
+Heinz ketchup, the 32 ounce bottle.
+= heinz.*ketchup | 32 oz | 1
 ---
-What tea do you have?
-The cheaper black tea, 40 bags.
-And a small pack of cookies with that.
-= black tea | 40 bags | 1
-= cookie|biscuit | - | 1
+Honey Nut Cheerios, please. The biggest box you have.
+The cheaper one.
+= honey nut cheerios|cheerios honey nut | 3 lb | 1
+---
+Two bags of Doritos Spicy Nacho, the 9.25 ounce.
+= doritos.*spicy nacho | 9.25 oz | 2
+---
+Ben & Jerry's chocolate chip cookie dough, a pint.
+If you don't have it, Chocolate Fudge Brownie then.
+= ben & jerry.*chocolate fudge brownie | 16 fl oz | 1
+---
+Domino powdered sugar, the one pound bag.
+Then the big one.
+= domino.*powdered sugar | 4 lb | 1
+---
+Horizon unsalted butter, one pound.
+= horizon.*unsalted butter | 454 g | 1
+---
+Something for breakfast tomorrow. Waffles.
+Eggo blueberry.
+The Eggo one. Just one box.
+= eggo.*blueberry waffles | 12.3 oz | 1
+---
+Four cans of Campbell's cream of mushroom.
+= campbell.*cream.*mushroom | - | 4
+---
+Folgers decaf, any size.
+The smallest one, please.
+= folgers.*decaf | 9.6 oz | 1
+---
+Jasmine rice, a 5 pound bag.
+The cheapest one.
+= jasmine | 5 lb | 1
 ---
 Do you sell phone chargers?
 = none
 ---
-This says 10 kg of flour. You don't have that, do you?
-Then the largest you do have. Two of them.
-= flour | 5 kg | 2
----
-Ground coffee, 250 grams. No instant.
-= ground coffee | 250 g | 1
----
-Onions, potatoes, tomatoes.
+Ghirardelli white chocolate caramel. Only that one.
 = none
 ---
-Just looking, thanks.
+Barilla penne, the 2 pound box.
+= barilla.*penne | 2 lb | 1
+---
+Jif creamy peanut butter. The 16 ounce jar.
+The creamy one, please.
+= jif.*peanut butter | 16 oz | 1
+---
+I need sour cream for tacos tonight. Daisy, 16 ounce.
+= daisy.*sour cream | 16 oz | 1
+---
+Two cans of Goya chick peas, the 15.5 ounce.
+= goya.*chick peas | 15.5 oz | 2
+---
+Brown sugar for cookies. Domino light brown, 2 pounds.
+= domino.*light brown sugar | 32 oz | 1
+---
+Hormel thick cut bacon, one pound.
+= hormel.*thick cut bacon | 16 oz | 1
+---
+Pizza night for the kids. DiGiorno Supreme, rising crust.
+Two of them.
+= digiorno.*supreme | 31.4 oz | 2
+---
+Ghirardelli brownie mix.
+The plain one, no nuts. One box.
+= ghirardelli.*brownie | 20 oz | 1
+---
+Three boxes of Jell-O pistachio pudding.
+= jell-o.*pistachio | 3.4 oz | 3
+---
+Dave's Killer Bread, the Good Seed loaf.
+Just one.
+= dave's killer.*good seed | 27 oz | 1
+---
+Gatorade fruit punch, the 28 ounce bottles. Two of them.
+= gatorade.*fruit punch | 28 oz | 2
+---
+Haribo Goldbears, the 8 ounce bag. Three bags.
+= haribo.*goldbears | 8 oz | 3
+---
+Heinz ketchup 32 ounce and Heinz yellow mustard, the big one.
+= heinz.*ketchup | 32 oz | 1
+= heinz.*yellow mustard | 28 oz | 1
+---
+Something for movie night. Crackers.
+Cheez-It, the big 21 ounce box.
+The plain original one. Just one box.
+= cheez-it | 21 oz | 1
+---
+Bush's homestyle baked beans, the 28 ounce can.
+= bush.*homestyle baked beans | 28 oz | 1
+---
+Plain Cheetos Crunchy, not Flamin' Hot. The 2 ounce bag, only that size.
 = none
 ---
-Is the basmati worth the extra over the cheap rice?
-Then the cheap one, 5 kg.
-= ^(?!.*basmati).*rice | 5 kg | 1
----
-Butter, 250 grams. If you have the 500, how much more is it?
-The small one.
-= butter | 250 g | 1
----
-Can I pay later? I'll come by tomorrow.
+Chobani S'mores yogurt, 18 ounce.
+No, only that one. Never mind.
 = none
 ---
-Soap, toothpaste, and a travel-size shampoo.
+AA batteries, a four pack.
+= none
 ---
-I need oil for frying. Which one is the better deal?
-The 1 litre.
-Actually, make it the 3 litre if the price is close.
+Can I pay next week? I'm a regular.
+= none
 ---
-Do you have eggs?
+Two bags of Doritos Spicy Nacho, the 9.25 ounce. And do you deliver?
+= doritos.*spicy nacho | 9.25 oz | 2
 ---
-Basmati rice, one kilo. And salt.
----
-Something to serve with coffee. I have guests.
-Cookies, not chocolate.
----
-Sugar, 1 kg. And if the big pack is cheaper, that one.
----
-Is the extra virgin olive oil in stock?
-The 500 ml.
-No, leave it. Too much.
----
-Laundry detergent, the 1 litre. And dish soap.
----
-My child wants chips and a cola.
-The small chips. Two of those.
----
-Paprika, turmeric, and cumin. The small packs.
----
-A loaf of bread, please.
----
-Which rice is cheaper, basmati or the ordinary one?
-Ordinary, 5 kg.
----
-Whole milk, one litre. And butter, 250 grams.
----
-Mozzarella, 125 grams. And yogurt.
-The smaller yogurt.
----
-I asked for canola oil last time and you were out. Is it in now?
-One litre, then.
----
-Cookies. Whatever is cheapest.
-Two packs.
----
-Coffee, the instant, small jar. And sugar.
----
-We are ten people at the office. Coffee and cookies.
----
-A mop, a bucket, and floor cleaner.
----
-The rice I bought yesterday was torn. Can you swap it?
----
-Lentils. Red if you have them, otherwise whatever is in.
-One kilo.
----
-Almonds, 200 grams. Raisins too.
----
-Which runs out first, the olive oil or the sunflower oil? I only need one.
-Sunflower, 1 litre.
----
-Three bars of soap. The cheapest.
----
-Do you deliver?
----
-Oats for breakfast, and pancake mix.
-The smallest of each.
----
-A big bottle of water. Two, actually.
----
-Peanut butter, the small jar. And crackers.
----
-Paper towels. The big pack.
----
-I want to spend about 15 dollars on snacks for a train ride. What fits?
----
-Hand soap, the small bottle.
----
-Is there a family pack of laundry detergent, and is it actually cheaper per litre?
-Yes, that one.
----
-One cola, one orange juice. Cold, if you have it.
----
-How late are you open?
----
-Olive oil, 1 litre. If that is out, the 500 ml, two of them.
----
-A gift. Something small and sweet, under 10 dollars.
----
-The other one. Not the one you just said.
----
-Salt, sugar, tea, oil. The usual monthly shop.
-The 2 kg sugar if it is there.
----
-Do you have a printed receipt?
----
-Instant noodles, four packs. And cheese if you sell it, which I doubt.
----
-Olive oil or sunflower oil for frying, which is the better pick?
-Sunflower, 1 litre.
----
-I only have a 100 dollar bill.
----
-All-purpose cleaner. And bleach if the cleaner is out.
----
-What would you pick for a simple lentil soup, and what does a kilo cost?
-That one. One kilo.
----
-Raisins, for a pudding. So also brown sugar and a little butter.
-The small butter.
----
-Sorry, wrong shop.
----
-Two kilos of flour, but only if it is the 1 kg pack twice, not a big sack.
----
-Bar soap and laundry detergent. Different things, don't mix them up.
----
-Microwave popcorn. Two packs.
----
-Can you hold a bag of rice for me until this evening?
----
-Instant coffee, 50 grams. And black tea bags as well, someone in the house drinks that.
----
-The oil is leaking on this one. Another bottle.
----
-What is the cheapest thing I can make breakfast from, that you actually have?
-I'll take that. One pack.
----
-Shampoo, the big bottle, not the travel size.
----
-One of everything you just listed. No, too much. Just the first two.
----
-I need this packed as a gift. Do you have a bag?
----
-Fresh basil, ginger, and lemons.
----
-Rice, 1 kg. No, 5 kg. Sorry.
----
-Which cookie do kids actually finish, and what is the price?
-Two of those.
----
-Olive oil for a big party. The largest bottle.
----
-Can you check the date on the milk before you give it?
-The one litre.
----
-Nothing else, that's everything. What do I owe?
----
-Dish soap, the bigger bottle. And a sponge if you sell one.
----
-Black tea, the 40 or the 80 bags, which is the better deal per cup?
-The 80, then.
----
-I will take the same as the person before me.
----
-Flour, lentils, oil, salt, sugar. Don't suggest extras.
-The small lentils.
----
-Is the 10 kg rice in stock, and can one person carry it?
-Then 5 kg.
----
-Trash bags, and a sponge.
----
-Do you have a loyalty card or just a better price if I buy two?
-Two of the cheap soap, then.
----
-Greek yogurt, 1 kg. And if it is out, the small cups.
----
-I changed my mind on the cola. Just the chips.
----
-What is about to expire that you would rather sell today?
-I'll take one if it is still fine.
----
-A pack of water and a sports drink. Someone is unwell, so quickly.
----
-Can I return the soap? It is the wrong one.
-The other brand, then. One.
----
-Show me the oils under 5 dollars for a litre.
-The cheapest of those.
----
-I have a list: rice 5 kg, red lentils 1 kg, olive oil 1 litre, sugar 1 kg, salt, black tea 80 bags.
-Skip the oil. The rest.
----
-Just tell me if you have bread. Yes or no.
----
-The large laundry detergent. And don't give me dish soap, I asked for laundry.
----
-What do you recommend when someone asks for "something for breakfast" and doesn't say more?
-Fine. Corn flakes and milk. One each.
----
-Chips, two bags. Different kinds if you have them.
----
-Is this price the same as last week?
----
-One kilo of the lentils you have the most of.
----
-I want the fancy rice and the cheap rice, one kilo of each, so I can compare at home.
----
-Trash bags, sponges, and bleach. That is a set, please treat it as one order.
----
-Do you open a pack and sell part of it, or only whole packs?
-Then the smallest flour.
----
-A bottle of water. No, two. No, one. Sorry.
----
-Which of the soaps is the better deal, and do you have three of that one?
-Yes, three.
----
-I am buying for a neighbour who only wrote "oil". What should I ask them?
-Sunflower, 1 litre, if I have to choose now.
----
-Cream cheese and butter. Kerrygold if you have it, otherwise whatever is in.
----
-Last question: are you cheaper than the shop down the road?
-Then just the salt. One kilo.
+Barilla penne, the 2 pound box. Is there parking out back?
+= barilla.*penne | 2 lb | 1

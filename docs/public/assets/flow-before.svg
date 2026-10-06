@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200" role="img" aria-labelledby="before-title before-desc" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#111">
+  <title id="before-title">How a sale worked before</title>
+  <desc id="before-desc">A customer message goes to the model, which searches with guide. The model reads the results and calls buy. The model then reads the sale and writes the reply. A sale takes three model calls.</desc>
+  <defs>
+    <marker id="b-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#111"/>
+    </marker>
+  </defs>
+  <g stroke="#111" stroke-width="1.5">
+    <rect x="10" y="60" width="92" height="56" rx="4" fill="none"/>
+    <rect x="118" y="60" width="92" height="56" rx="4" fill="#dbe8fa"/>
+    <rect x="226" y="60" width="92" height="56" rx="4" fill="none"/>
+    <rect x="334" y="60" width="92" height="56" rx="4" fill="#dbe8fa"/>
+    <rect x="442" y="60" width="92" height="56" rx="4" fill="none"/>
+    <rect x="550" y="60" width="92" height="56" rx="4" fill="#dbe8fa"/>
+    <rect x="658" y="60" width="92" height="56" rx="4" fill="none"/>
+  </g>
+  <g fill="none" stroke="#111" stroke-width="1.5" marker-end="url(#b-arrow)">
+    <line x1="102" y1="88" x2="114" y2="88"/>
+    <line x1="210" y1="88" x2="222" y2="88"/>
+    <line x1="318" y1="88" x2="330" y2="88"/>
+    <line x1="426" y1="88" x2="438" y2="88"/>
+    <line x1="534" y1="88" x2="546" y2="88"/>
+    <line x1="642" y1="88" x2="654" y2="88"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="56" y="84">customer</text>
+    <text x="56" y="102">message</text>
+    <text x="164" y="84">model</text>
+    <text x="164" y="102" fill="#555">search?</text>
+    <text x="272" y="84">guide</text>
+    <text x="272" y="102" fill="#555">rows</text>
+    <text x="380" y="84">model</text>
+    <text x="380" y="102" fill="#555">sell?</text>
+    <text x="488" y="84">buy</text>
+    <text x="488" y="102" fill="#555">sold</text>
+    <text x="596" y="84">model</text>
+    <text x="596" y="102" fill="#555">say so</text>
+    <text x="704" y="84">reply</text>
+  </g>
+  <rect x="10" y="20" width="12" height="12" rx="2" fill="#dbe8fa" stroke="#111" stroke-width="1"/>
+  <text x="30" y="30.5" fill="#333">model call, about 2 seconds each</text>
+  <text x="10" y="156" fill="#555">A sale took three model calls. The last one only read the sale back.</text>
+  <text x="10" y="176" fill="#555">If the customer only named a product, the second call asked "Would you</text>
+  <text x="10" y="194" fill="#555">like one?" instead of selling, and the sale needed another message.</text>
+</svg>

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Grocery counter on the OpenAI Agents SDK.
 
-The model only sees two tools, both owned by the DuckDB MCP process:
-  guide  read stock, prices, substitutes
-  buy    sell a SKU the guide already returned
+The model sees two tools, both owned by the DuckDB MCP process:
+  guide  search the shelf
+  buy    sell a SKU guide returned
 
-The SDK runs the loop and speaks MCP. This file decides only what the SDK
-cannot: which two tools exist, that buy gets the turn's request_id from
-us and never from the model, and what each turn reports.
+SHOPKEEPER_FLOW picks who replies after a sale. model: the model reads
+the sale and writes the reply. receipt: a named product is an order, the
+counter prints the sale itself, and the model is called again only for
+whatever else the customer asked in that message.
 """
 
 import asyncio
@@ -18,7 +19,7 @@ import sys
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
@@ -32,56 +33,79 @@ from agents import (
     OpenAIResponsesModel,
     RunHooks,
     Runner,
+    ToolsToFinalOutputResult,
 )
 from agents.mcp import MCPServerStdio
 from openai.types.shared import Reasoning
 from opentelemetry.trace import Status, StatusCode
 
-from trace import PROJECT, flush, start as start_trace, tool_span, turn_span
+from models import (
+    ENV_DB, ENV_KEY, BuyArgs, BuyRequest, BuyStatus, Flow, GuideArgs, ItemType,
+    LlmDone, LlmStart, Offer, Outcome, Role, Sale, Settings, Step, Tool, ToolDone,
+    ToolStart, buy_result_of, offers_of, said, shown_offers,
+)
+from trace import PROJECT, flush, start as start_trace, step_span, tool_span, turn_span
 
 ROOT = Path(__file__).resolve().parents[1]
-ALLOWLIST = ROOT / "models.allowlist"
-# SHOPKEEPER_SHOP=big plays the Open Food Facts shelf (make bigdb) instead
-# of the small made-up one.
-SHOP = os.environ.get("SHOPKEEPER_SHOP", "small")
-if SHOP not in ("small", "big"):
-    raise SystemExit(f"SHOPKEEPER_SHOP must be small or big, not {SHOP}")
-DB = ROOT / "store" / ("big.duckdb" if SHOP == "big" else "shop.duckdb")
 PUBLISH = ROOT / "store" / "publish.sql"
+# Read at import: the floor copies the shelf before .env loads.
+DB = Path(os.environ.get(ENV_DB) or ROOT / "store" / "shop.duckdb")
 
-# Model calls per turn before the counter gives up.
-MAX_STEPS = 4
+AGENT_NAME = "counter"
+MCP_NAME = "shelf"
+MCP_TIMEOUT_SECONDS = 30
+MAX_STEPS = 4  # model calls per customer message before the counter gives up
+MAX_TOKENS = 400
+MAX_RETRIES = 4
+TIMEOUT_SECONDS = 60
+ERROR_CHARS = 500
+REPLY_CHARS = 4000
+REQUEST_ID = "request_id"
+REST = "rest"
+RECEIPT_SPAN = "receipt"
+
 STUCK = "Counter is stuck in tools. Say it again, shorter."
+MISSING_KEY = f"{ENV_KEY} is unset. Copy .env.example to .env."
 
-SYSTEM = """You are the counter at a small neighborhood grocery store.
+RECEIPT_LINE = "Sold: {qty} x {product}, ${price} each. {left} left."
+UNKNOWN_PRODUCT = "item {sku}"
+# Told to the model when it is called back for what a sold message left open.
+REST_NOTE = """
+The sale in this line is done and the customer has its receipt. Do not mention it or sell it again.
+Answer only this part of what they said: {rest}
+"""
+
+REST_SCHEMA = {"type": "string", "description": (
+    "Anything else the customer asked in this line that the sale does not answer, "
+    "in their words. Empty when the sale is all they asked for.")}
+
+BUY_RULE = {
+    Flow.MODEL: "- buy: sell only when the customer has asked to buy AND you have a SKU from guide. Never invent a SKU. Pass that SKU and the pack count.",
+    Flow.RECEIPT: "- buy: a customer naming a product at the counter is ordering it. When exactly one in-stock row from guide fits everything they said (brand, product, size, the one they picked), call buy at once with that SKU and the count they said, or 1. Do not ask them to confirm. Ask a question only when several different products fit, or none does. Never invent a SKU. In rest, put anything else they asked in the same line.",
+}
+
+SYSTEM = """You are the counter at a neighborhood grocery store.
 Reply in plain English. Short. Prices come only from tool results, in USD.
 
 You have two tools and no others:
 - guide: look up what is actually on the shelf. Call this before you name a price, a pack, or a substitute. Also call it when the request is vague ("something for breakfast", "which flour is better").
-- buy: sell only when the customer has asked to buy AND you have a SKU from guide. Never invent a SKU. Pass that SKU and the pack count.
+{buy_rule}
 
 If guide says in_stock is false, do not call buy. Offer another row from the same guide result, or say you will note it.
 If buy status is sold, confirm pack, price, and stock left. If out_of_stock or unknown_sku, say so and guide again.
 Do not mention tools, SKU format rules, or that a database exists.
-"""
 
-# SHOPKEEPER_PROMPT=catalog adds what the shop sells, read from the shelf,
-# and asks for every search up front. "base" is SYSTEM alone.
-CATALOG = """
-What the shop sells, by category. These are the item names on the shelf:
-{catalog}
-
-Before you answer a customer line, work out every item they could mean and call guide once for each of them, all in the same step. Search with the item name from the list, like "Long Grain Rice", never with sizes, quantities or other words. If they ask for something general, like "oil" or "something for breakfast", search for each item that fits. Then pick the size, price and quantity from the rows that come back.
-If what they ask for is not in the list, the shop does not sell it.
-"""
-
-# SHOPKEEPER_PROMPT=aisles names only the departments, which stay about the
-# same size however big the shelf gets. guide does the finding.
-AISLES = """
 The shop's departments, so you know what kind of shop this is: {aisles}.
 
 Search guide with the words the customer used for each item: brand, product, flavor. One item per call; for several items, call guide for each in the same step. If the first search misses, try other words before saying the shop does not have it. Pick the size, price and quantity from the rows that come back.
 """
+
+BUY_SLOT, AISLES_SLOT, CATALOG_SLOT = "{buy_rule}", "{aisles}", "{catalog}"
+CATALOG_SQL = ("SELECT string_agg('- ' || category || ': ' || items, chr(10) ORDER BY category) FROM "
+               "(SELECT category, string_agg(DISTINCT item, ', ' ORDER BY item) AS items "
+               "FROM products GROUP BY category)")
+AISLES_SQL = ("SELECT string_agg(category, ', ' ORDER BY n DESC) FROM "
+              "(SELECT category, count(*) AS n FROM products GROUP BY category)")
 
 
 class ModelError(RuntimeError):
@@ -100,44 +124,39 @@ def load_dotenv():
         os.environ.setdefault(key.strip(), value.strip())
 
 
-def prompt_name():
-    name = os.environ.get("SHOPKEEPER_PROMPT", "base")
-    if name not in ("base", "catalog", "aisles"):
-        raise SystemExit(f"SHOPKEEPER_PROMPT must be base, catalog or aisles, not {name}")
-    return name
-
-
-def catalog_of(db):
-    """One line per category with its item names, straight from the shelf."""
-    rows = json.loads(subprocess.run(
-        ["duckdb", "-readonly", "-json", str(db), "-c",
-         "SELECT category, string_agg(DISTINCT item, ', ' ORDER BY item) AS items "
-         "FROM products GROUP BY category ORDER BY category"],
-        capture_output=True, text=True, check=True,
-    ).stdout)
-    return "\n".join(f"- {r['category']}: {r['items']}" for r in rows)
-
-
-def aisles_of(db):
+def aisles_of(db: Path) -> str:
     """The departments, biggest first, straight from the shelf."""
-    return subprocess.run(
-        ["duckdb", "-readonly", "-noheader", "-list", str(db), "-c",
-         "SELECT string_agg(category, ', ' ORDER BY n DESC) FROM "
-         "(SELECT category, count(*) AS n FROM products GROUP BY category)"],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
+    return subprocess.run(["duckdb", "-readonly", "-noheader", "-list", str(db), "-c", AISLES_SQL],
+                          capture_output=True, text=True, check=True).stdout.strip()
 
 
-def allowlisted_model():
-    chosen = os.environ.get("OPENROUTER_MODEL", "gpt-6-luna")
-    allowed = {
-        line.strip()
-        for line in ALLOWLIST.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    }
-    if chosen not in allowed:
-        raise SystemExit(f"model {chosen} is not in {ALLOWLIST.name}")
-    return chosen
+def catalog_of(db: Path) -> str:
+    """One line per department with its item names, straight from the shelf."""
+    return subprocess.run(["duckdb", "-readonly", "-noheader", "-list", str(db), "-c", CATALOG_SQL],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def prompt_of(path: str | None, buy_rule: str, db: Path) -> str:
+    """SYSTEM, or a prompt file from an experiment. Either may ask for the
+    departments or the full item list, which are read from the shelf."""
+    text = Path(path).read_text() if path else SYSTEM
+    for slot, fill in ((BUY_SLOT, lambda: buy_rule), (AISLES_SLOT, lambda: aisles_of(db)),
+                       (CATALOG_SLOT, lambda: catalog_of(db))):
+        if slot in text:
+            text = text.replace(slot, fill())
+    return text
+
+
+def receipt(sales: list[Sale]) -> str:
+    """What the counter prints for the sales in one line."""
+    lines = []
+    for sale in sales:
+        offer = sale.offer
+        product = (f"{offer.brand} {offer.name}, {offer.pack_label}" if offer
+                   else UNKNOWN_PRODUCT.format(sku=sale.result.sku))
+        lines.append(RECEIPT_LINE.format(qty=sale.result.qty_sold, product=product,
+                                         price=sale.result.price_usd, left=sale.result.stock_left))
+    return "\n".join(lines)
 
 
 @dataclass
@@ -145,95 +164,95 @@ class Turn:
     """Run context. The tools and hooks read it; the model never sees it."""
     request_id: str
     model: str
-    watch: Callable | None = None
+    offers: dict[str, Offer]
+    watch: Callable[[dict], None] | None = None
+    sales: list[Sale] = field(default_factory=list)
+    printed: bool = False  # the last run ended on a printed receipt
     step: int = 0
     rows: int = 0
     llm_row: int = 0
     began: float = 0.0
 
-    def tell(self, event):
+    def tell(self, event: Step):
         if self.watch:
             try:
-                self.watch(event)
+                self.watch(event.model_dump(mode="json"))
             except Exception:
                 # A page that cannot keep up must not lose the sale.
                 pass
 
-    def row(self):
+    def row(self) -> int:
         self.rows += 1
         return self.rows
 
 
 class Steps(RunHooks):
-    """Model-call events for the page and the scores. Phoenix gets its
-    model spans from the instrumentor, not from here."""
+    """Model-call events for the floor. Phoenix gets its model spans from
+    the instrumentor, not from here."""
 
     async def on_llm_start(self, context, agent, system_prompt, input_items):
         turn = context.context
         turn.step += 1
         turn.llm_row = turn.row()
         turn.began = time.monotonic()
-        turn.tell({"kind": "llm.start", "step": turn.step,
-                   "row": turn.llm_row, "model": turn.model})
+        turn.tell(LlmStart(step=turn.step, row=turn.llm_row, model=turn.model))
 
     async def on_llm_end(self, context, agent, response):
         turn = context.context
         usage = response.usage
-        turn.tell({
-            "kind": "llm",
-            "step": turn.step,
-            "row": turn.llm_row,
-            "model": turn.model,
-            "seconds": round(time.monotonic() - turn.began, 3),
-            "prompt_tokens": usage.input_tokens,
-            "cached_tokens": usage.input_tokens_details.cached_tokens or 0,
-            "completion_tokens": usage.output_tokens,
-            "wants": [item.name for item in response.output
-                      if getattr(item, "type", "") == "function_call"],
-        })
+        turn.tell(LlmDone(
+            step=turn.step, row=turn.llm_row, model=turn.model,
+            seconds=round(time.monotonic() - turn.began, 3),
+            prompt_tokens=usage.input_tokens,
+            cached_tokens=usage.input_tokens_details.cached_tokens or 0,
+            completion_tokens=usage.output_tokens,
+            wants=[item.name for item in response.output
+                   if getattr(item, "type", None) == ItemType.FUNCTION_CALL],
+        ))
+
+
+def stop_after_sale(context, results) -> ToolsToFinalOutputResult:
+    """The receipt flow: a step whose sales all went through ends the model's
+    part of the line. Anything else, like out of stock, goes back to it."""
+    buys = [r for r in results if r.tool.name == Tool.BUY]
+    if not buys or any(buy_result_of(r.output).status != BuyStatus.SOLD for r in buys):
+        return ToolsToFinalOutputResult(is_final_output=False)
+    turn = context.context
+    turn.printed = True
+    return ToolsToFinalOutputResult(is_final_output=True, final_output=receipt(turn.sales))
 
 
 class Shelf:
-    """The DuckDB MCP process, the OpenAI client, and the event loop the
+    """The DuckDB MCP process, the model client, and the event loop the
     SDK runs on.
 
-    Callers are plain threads (the floor's workers, the eval runner). They
-    hand each turn to this one loop and wait for it, so one MCP session
-    serves everyone and the floor does not need to be async.
+    Callers are plain threads (the floor's workers). They hand each turn to
+    this one loop and wait for it, so one MCP session serves everyone.
     """
 
-    def __init__(self, db=DB):
+    def __init__(self, db: Path = DB):
+        self.settings = Settings.from_env()
         if not Path(db).exists():
-            raise SystemExit(f"missing {db}. Run `make {'bigdb' if SHOP == 'big' else 'db'}` from the shopkeeper directory.")
+            raise SystemExit(f"missing {db}. Run `make db` from the shopkeeper directory.")
+        if not self.settings.api_key:
+            raise SystemExit(MISSING_KEY)
+        self.model = self.settings.model
+        self.flow = self.settings.flow
         # Read before the MCP process opens the file for writing.
-        self.prompt = prompt_name()
-        self.instructions = SYSTEM
-        if self.prompt == "catalog":
-            self.instructions += CATALOG.format(catalog=catalog_of(db))
-        elif self.prompt == "aisles":
-            self.instructions += AISLES.format(aisles=aisles_of(db))
-        key = os.environ.get("OPENROUTER_API_KEY", "")
-        if not key:
-            raise SystemExit("OPENROUTER_API_KEY is unset. Copy .env.example to .env.")
-        self.client = openai.AsyncOpenAI(
-            api_key=key,
-            base_url=os.environ.get("OPENROUTER_BASE_URL", "https://api.openai.com/v1"),
-            max_retries=4,
-            timeout=60,
-        )
+        self.publish = Path(self.settings.publish or PUBLISH)
+        self.instructions = prompt_of(self.settings.prompt, BUY_RULE[self.flow], db)
+        self.client = openai.AsyncOpenAI(api_key=self.settings.api_key,
+                                         base_url=self.settings.base_url,
+                                         max_retries=MAX_RETRIES, timeout=TIMEOUT_SECONDS)
         self.loop = asyncio.new_event_loop()
         threading.Thread(target=self.loop.run_forever, daemon=True).start()
         self.server = MCPServerStdio(
-            params={"command": "duckdb",
-                    "args": ["-unsigned", "-init", str(PUBLISH), str(db)]},
-            name="shelf",
-            client_session_timeout_seconds=30,
-        )
+            params={"command": "duckdb", "args": ["-unsigned", "-init", str(self.publish), str(db)]},
+            name=MCP_NAME, client_session_timeout_seconds=MCP_TIMEOUT_SECONDS)
         self.run(self.server.connect())
         listed = self.run(self.server.list_tools())
-        names = {tool.name for tool in listed}
-        if names != {"guide", "buy"}:
-            raise SystemExit(f"refusing store that publishes {sorted(names)}")
+        if {tool.name for tool in listed} != set(Tool):
+            raise SystemExit(f"refusing store that publishes {sorted(t.name for t in listed)}")
         # DuckDB answers one call at a time. Waiting for it is contention,
         # not query time, so the two are reported apart.
         self.pipe = asyncio.Lock()
@@ -242,46 +261,64 @@ class Shelf:
     def run(self, coro):
         return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
 
-    def wrap(self, tool):
+    def wrap(self, tool) -> FunctionTool:
+        name = Tool(tool.name)
         schema = json.loads(json.dumps(tool.input_schema))
-        if tool.name == "buy":
-            # The model never writes the idempotency key. One per turn.
-            schema["properties"].pop("request_id", None)
-            schema["required"] = [k for k in schema.get("required", []) if k != "request_id"]
+        if name == Tool.BUY:
+            # The model never writes the idempotency key. One per customer message.
+            schema["properties"].pop(REQUEST_ID, None)
+            schema["required"] = [k for k in schema.get("required", []) if k != REQUEST_ID]
+            if self.flow == Flow.RECEIPT:
+                schema["properties"][REST] = REST_SCHEMA
 
-        async def invoke(ctx, raw):
+        async def invoke(ctx, raw: str) -> str:
             turn = ctx.context
-            try:
-                arguments = json.loads(raw or "{}")
-            except json.JSONDecodeError:
-                arguments = {}
-            if tool.name == "buy":
-                arguments["request_id"] = turn.request_id
-                arguments["qty"] = int(arguments.get("qty") or 1)
-            row = turn.row()
-            turn.tell({"kind": "tool.start", "step": turn.step, "row": row,
-                       "name": tool.name, "args": arguments})
-            queued = time.monotonic()
-            async with self.pipe:
-                began = time.monotonic()
-                with tool_span(tool.name, arguments) as span:
-                    result = await self.server.call_tool(tool.name, arguments)
-                    text = "\n".join(getattr(c, "text", "") for c in result.content)
-                    span.set_attribute("output.value", text)
-                    span.set_status(Status(StatusCode.OK))
-            done = time.monotonic()
-            turn.tell({"kind": "tool", "step": turn.step, "row": row,
-                       "name": tool.name, "args": arguments, "result": text,
-                       "seconds": round(done - began, 4),
-                       "waited": round(began - queued, 4)})
+            if name == Tool.GUIDE:
+                text = await self.call(turn, name, GuideArgs.model_validate_json(raw))
+                turn.offers.update({offer.sku: offer for offer in offers_of(text)})
+                return text
+            args = BuyArgs.model_validate_json(raw)
+            text = await self.call(turn, name, BuyRequest(sku=args.sku, qty=args.qty,
+                                                          request_id=turn.request_id))
+            result = buy_result_of(text)
+            if result.status == BuyStatus.SOLD:
+                turn.sales.append(Sale(offer=turn.offers.get(args.sku), result=result,
+                                       rest=args.rest))
             return text
 
-        return FunctionTool(
-            name=tool.name,
-            description=tool.description or "",
-            params_json_schema=schema,
-            on_invoke_tool=invoke,
-            strict_json_schema=False,
+        return FunctionTool(name=name, description=tool.description or "",
+                            params_json_schema=schema, on_invoke_tool=invoke,
+                            strict_json_schema=False)
+
+    async def call(self, turn: Turn, name: Tool, args: GuideArgs | BuyRequest) -> str:
+        """One MCP tool call, timed and traced, reported to the floor."""
+        arguments = args.model_dump(mode="json", exclude_none=True)
+        row = turn.row()
+        turn.tell(ToolStart(step=turn.step, row=row, name=name, args=arguments))
+        queued = time.monotonic()
+        async with self.pipe:
+            began = time.monotonic()
+            with tool_span(name, arguments) as span:
+                result = await self.server.call_tool(name, arguments)
+                text = "\n".join(getattr(c, "text", "") for c in result.content)
+                span.set_attribute("output.value", text)
+                span.set_status(Status(StatusCode.OK))
+        done = time.monotonic()
+        turn.tell(ToolDone(step=turn.step, row=row, name=name, args=arguments, result=text,
+                           seconds=round(done - began, 4), waited=round(began - queued, 4)))
+        return text
+
+    def agent(self, extra: str = "") -> Agent:
+        effort = self.settings.effort
+        return Agent(
+            name=AGENT_NAME,
+            instructions=self.instructions + extra,
+            model=OpenAIResponsesModel(self.model, self.client),
+            model_settings=ModelSettings(
+                max_tokens=MAX_TOKENS,
+                reasoning=Reasoning(effort=effort) if effort else None),
+            tools=self.tools,
+            tool_use_behavior=stop_after_sale if self.flow == Flow.RECEIPT else "run_llm_again",
         )
 
     def close(self):
@@ -292,58 +329,66 @@ class Shelf:
             self.loop.call_soon_threadsafe(self.loop.stop)
 
 
-def turn(shelf, model, history, utterance, request_id,
-         watch=None, session=None, parent=None):
+def turn(shelf: Shelf, history: list, utterance: str, request_id: str,
+         watch=None, session=None, parent=None) -> str:
     """One utterance in, one reply out. Blocks the calling thread.
 
     `history` is the SDK's input list and is replaced in place, so the
     next turn sees this turn's tool calls and results, not just its text.
-    `watch` gets one dict per model call and tool call as they finish.
+    `watch` gets one dict per step as it finishes.
     `parent` is the trace context of the conversation this turn belongs to.
     """
-    return shelf.run(_turn(shelf, model, history, utterance, request_id,
-                           watch, session, parent))
+    return shelf.run(_turn(shelf, history, utterance, request_id, watch, session, parent))
 
 
-async def _turn(shelf, model, history, utterance, request_id,
-                watch, session, parent):
-    effort = os.environ.get("OPENROUTER_REASONING_EFFORT")
-    agent = Agent(
-        name="counter",
-        instructions=shelf.instructions,
-        model=OpenAIResponsesModel(model, shelf.client),
-        model_settings=ModelSettings(
-            max_tokens=400,
-            reasoning=Reasoning(effort=effort) if effort else None,
-        ),
-        tools=shelf.tools,
-    )
-    items = [*history, {"role": "user", "content": utterance}]
-    context = Turn(request_id=request_id, model=model, watch=watch)
+async def _answer(shelf: Shelf, agent: Agent, items: list, context: Turn) -> tuple[str, list]:
+    """One run of the model over `items`; the reply and the items after it."""
     try:
-        with turn_span(request_id, utterance, model, session, parent) as span:
-            try:
-                result = await Runner.run(agent, items, context=context,
-                                          max_turns=MAX_STEPS, hooks=Steps())
-            except MaxTurnsExceeded:
-                text, outcome = STUCK, "stuck"
-                history[:] = [*items, {"role": "assistant", "content": text}]
-            except openai.APIError as exc:
-                code = getattr(exc, "status_code", None) or "timeout"
-                raise ModelError(f"model {code}: {str(exc)[:500]}") from exc
-            except ModelBehaviorError as exc:
-                # e.g. the reply ran past max_tokens and came back incomplete.
-                raise ModelError(f"model reply unusable: {str(exc)[:500]}") from exc
-            else:
-                text = str(result.final_output or "")
-                outcome = "replied" if text.strip() else "empty"
-                history[:] = result.to_input_list()
-            # replied, empty (model said nothing) or stuck (ran out of steps).
-            # The last two are failures, so Phoenix counts them as errors.
+        result = await Runner.run(agent, items, context=context,
+                                  max_turns=MAX_STEPS, hooks=Steps())
+    except MaxTurnsExceeded:
+        return STUCK, [*items, said(Role.ASSISTANT, STUCK)]
+    except openai.APIError as exc:
+        code = getattr(exc, "status_code", None) or "timeout"
+        raise ModelError(f"model {code}: {str(exc)[:ERROR_CHARS]}") from exc
+    except ModelBehaviorError as exc:
+        # e.g. the reply ran past max_tokens and came back incomplete.
+        raise ModelError(f"model reply unusable: {str(exc)[:ERROR_CHARS]}") from exc
+    text = str(result.final_output or "")
+    after = result.to_input_list()
+    if context.printed:
+        # The receipt is the counter's reply, not the model's; the next run must see it.
+        after.append(said(Role.ASSISTANT, text))
+        context.printed = False
+    return text, after
+
+
+async def _turn(shelf, history, utterance, request_id, watch, session, parent):
+    items = [*history, said(Role.USER, utterance)]
+    context = Turn(request_id=request_id, model=shelf.model,
+                   offers=shown_offers(history), watch=watch)
+    try:
+        with turn_span(request_id, utterance, shelf.model, session, parent) as span:
+            text, history[:] = await _answer(shelf, shelf.agent(), items, context)
+            rest = " ".join(sale.rest for sale in context.sales if sale.rest.strip())
+            if context.sales and shelf.flow == Flow.RECEIPT:
+                with step_span(RECEIPT_SPAN, text) as receipt_span:
+                    receipt_span.set_attribute(REST, rest)
+                if rest:
+                    # The rest of the message goes back through the counter, sale already done.
+                    sold = len(context.sales)
+                    more, history[:] = await _answer(shelf, shelf.agent(REST_NOTE.format(rest=rest)),
+                                                     history, context)
+                    if len(context.sales) > sold:
+                        more = receipt(context.sales[sold:])
+                    text = f"{text}\n{more}"
+            outcome = (Outcome.STUCK if text == STUCK else
+                       Outcome.REPLIED if text.strip() else Outcome.EMPTY)
+            # Empty and stuck are failures, so Phoenix counts them as errors.
             span.set_attribute("shopkeeper.outcome", outcome)
-            span.set_status(Status(StatusCode.OK) if outcome == "replied"
+            span.set_status(Status(StatusCode.OK) if outcome == Outcome.REPLIED
                             else Status(StatusCode.ERROR, outcome))
-            span.set_attribute("output.value", text[:4000])
+            span.set_attribute("output.value", text[:REPLY_CHARS])
             return text
     finally:
         flush()
@@ -351,11 +396,10 @@ async def _turn(shelf, model, history, utterance, request_id,
 
 def main():
     load_dotenv()
-    model = allowlisted_model()
     start_trace()
     shelf = Shelf()
     history = []
-    print(f"counter up on {model}. empty line to leave.", file=sys.stderr)
+    print(f"counter up on {shelf.model}, {shelf.flow} flow. empty line to leave.", file=sys.stderr)
     print(f"traces: http://localhost:6006 project {PROJECT}", file=sys.stderr)
     try:
         while True:
@@ -365,7 +409,7 @@ def main():
                 break
             if not utterance:
                 break
-            print(turn(shelf, model, history, utterance, uuid.uuid4().hex))
+            print(turn(shelf, history, utterance, uuid.uuid4().hex))
     finally:
         shelf.close()
 
