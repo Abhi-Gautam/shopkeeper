@@ -9,7 +9,7 @@ sourceCommit: c403cea2c0e1f85ab3841f75fb000fafbda4bf21
 
 A customer walks up to the counter and says, "Heinz ketchup, the 32 ounce bottle." The shopkeeper checks the shelf, finds it, and sells it.
 
-I built a shop like that, with a model behind the counter, and I want to make it as good as I can: more correct, faster, and cheaper. This post is how it works, how I judge it, and the five versions it went through.
+I built a shop like that, with a model behind the counter, and I want to make it as good as I can: more correct, faster, and cheaper. This post is how it works, how I judge it, and every version it went through.
 
 ## The shop
 
@@ -78,9 +78,21 @@ The six that went wrong show the next problem. Four customers got too much: the 
 
 Reading these traces also caught a bug that no score would have. Every sale in one customer message shared one idempotency key, so when a customer asked for ketchup and mustard together, the mustard was reported as sold but never left the shelf. Each sale now has its own key, and the numbers above are from the run after the fix.
 
-![All five versions on the same 33 customers. Customers who got the right order: 7, 6, 8 on the small shop, 7 with the item list on the full shelf, 23 with ranked search, 27 with ranked search and a printed receipt. Seconds per customer: 5.7, 6.6, 6.7, 9.3, 5.7, 5.7. Cost for the 33 customers: $0.006, $0.026, $0.027, $0.146, $0.010, $0.013.](/media/shopkeeper/stages.svg)
+## A model for the decision
 
-Next is the selling decision itself: knowing when an order is complete before selling it.
+Those six mistakes are all the same decision: is this message an order, for which product, and how many. That decision does not need a model that writes text. It is a choice between a few answers, and gpt-6-luna spends about two seconds on each one.
+
+[Jev](https://openrouter.ai/docs/guides/community/jev), from TypeSafe, is built for exactly this. You send it a state and a few typed questions, a yes or no, or a pick from a list, and it sends back a probability for each answer, in about a third of a second. It never writes a reply.
+
+So now the model only searches and talks, and it no longer has the `buy` tool at all. After every search, Jev reads the conversation, every receipt already printed, and the products the search found, and answers five questions: does the latest message order a product, which of these products was searched for, how many does the customer want in total, how many different products does the message order, and does it also ask something else. When Jev is sure about the order, the product and the amount, the counter subtracts what this customer already bought, sells the rest, and prints the receipt. When it is not sure, the model replies as before. A message like "The cheaper one", which picks from products already shown, goes to Jev before the model, and often needs no model call at all.
+
+![With Jev: the model searches, Jev decides after each search, the counter sells and prints the receipt, and the model is called again only when Jev is not sure or the customer asked for more. A plain sale takes one model call.](/media/shopkeeper/flow-jev.svg)
+
+Getting the questions right took three versions, and each time the traces showed what was wrong. In the first, the question about the order counted any question in the message as a no, so "Barilla penne, and is there parking?" was not an order, and "ketchup and mustard" sold only the ketchup; 28 of 33 customers got their order. In the second, I asked Jev how many more to sell after what was already sold. That is arithmetic, the one thing TypeSafe says Jev is weak at, and its confidence on that question fell below the bar for most customers; only 14 of 33 got their order. In the third, every question tests exactly one thing, Jev only reads what the customer said, and code does the counting. Before the second and third runs, I checked the questions on messages that are not among the 33, and the confidence bars never changed.
+
+30 of 33 customers got the right order, with no wrong sales and no extra ones. "The Eggo one. Just one box" now sells nothing more, because the counter knows one box is already sold. A customer takes 4.0 seconds instead of 5.7, a message with a sale 2.4 seconds instead of 4.3, and the 33 customers cost $0.0095 instead of $0.0126, Jev's share included. The three that went wrong were really unclear: two regular Campbell's soups under different names, a regular and an organic Dave's Killer Bread loaf, and "Then the big one" after a reply that never mentioned the big bag.
+
+![All seven versions on the same 33 customers. Customers who got the right order: 7, 6, 8 on the small shop, 7 with the item list on the full shelf, 23 with ranked search, 27 with a printed receipt, 30 with Jev deciding the sale. Seconds per customer: 5.7, 6.6, 6.7, 9.3, 5.7, 5.7, 4.0. Cost for the 33 customers: $0.0063, $0.0259, $0.0268, $0.1455, $0.0099, $0.0126, $0.0095.](/media/shopkeeper/stages.svg)
 
 ---
 

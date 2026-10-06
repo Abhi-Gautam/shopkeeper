@@ -34,6 +34,7 @@ class Flow(StrEnum):
     """Who writes the reply after a sale."""
     MODEL = "model"      # the model reads the sale and writes the reply
     RECEIPT = "receipt"  # the counter prints the sale; the model answers only what is left
+    JEV = "jev"          # Jev decides the sale, the counter sells and prints; the model never sells
 
 
 class Tool(StrEnum):
@@ -73,7 +74,7 @@ class Settings(BaseModel):
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
-            flow=os.environ.get(ENV_FLOW, Flow.RECEIPT),
+            flow=os.environ.get(ENV_FLOW, Flow.JEV),
             publish=os.environ.get(ENV_PUBLISH) or None,
             prompt=os.environ.get(ENV_PROMPT) or None,
             model=os.environ.get(ENV_MODEL, DEFAULT_MODEL),
@@ -235,6 +236,30 @@ def talk_of(raw: list) -> list[str]:
             for item in items_of(raw) if isinstance(item, Message) and item.text]
 
 
+def last_offers(raw: list) -> list[Offer]:
+    """The rows the last guide call in the conversation returned."""
+    names, table = {}, ""
+    for item in items_of(raw):
+        if isinstance(item, FunctionCall):
+            names[item.call_id] = item.name
+        elif isinstance(item, FunctionCallOutput) and names.get(item.call_id) == Tool.GUIDE:
+            table = item.output
+    return offers_of(table)
+
+
+def sold_counts(raw: list) -> dict[str, int]:
+    """Packs of each SKU sold so far in the conversation, from buy's answers."""
+    names, sold = {}, {}
+    for item in items_of(raw):
+        if isinstance(item, FunctionCall):
+            names[item.call_id] = item.name
+        elif isinstance(item, FunctionCallOutput) and names.get(item.call_id) == Tool.BUY:
+            result = buy_result_of(item.output)
+            if result.status == BuyStatus.SOLD and result.sku:
+                sold[result.sku] = sold.get(result.sku, 0) + result.qty_sold
+    return sold
+
+
 def shown_offers(raw: list) -> dict[str, Offer]:
     """Every row guide returned so far in the conversation, by SKU."""
     names, shown = {}, {}
@@ -257,6 +282,7 @@ class StepKind(StrEnum):
     LLM = "llm"
     TOOL_START = "tool.start"
     TOOL = "tool"
+    JEV = "jev"
 
 
 class LlmStart(BaseModel):
@@ -297,4 +323,20 @@ class ToolDone(BaseModel):
     waited: float
 
 
-Step = LlmStart | LlmDone | ToolStart | ToolDone
+class JevDone(BaseModel):
+    kind: Literal[StepKind.JEV] = StepKind.JEV
+    sku: str | None
+    qty: int
+    seconds: float
+    cost: float
+
+
+def tool_exchange(call_id: str, name: Tool, arguments: BaseModel, output: str) -> list[dict]:
+    """A tool call and its result, as the model will read them next."""
+    return [
+        FunctionCall(call_id=call_id, name=name, arguments=arguments.model_dump_json()).model_dump(mode="json"),
+        FunctionCallOutput(call_id=call_id, output=output).model_dump(mode="json"),
+    ]
+
+
+Step = LlmStart | LlmDone | ToolStart | ToolDone | JevDone

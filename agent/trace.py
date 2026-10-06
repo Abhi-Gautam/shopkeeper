@@ -5,6 +5,7 @@
     └─ utterance      one message they said: request_id, outcome
        ├─ Response    each model call, from the OpenInference OpenAI
        │              instrumentor: messages, tokens, errors
+       ├─ jev         Jev's decision, in the jev flow: questions, answers
        ├─ guide / buy each tool call: arguments, result
        └─ receipt     the sale the counter printed, in the receipt flow
 
@@ -122,5 +123,19 @@ def step_span(name, output):
     with tracer.start_as_current_span(name, attributes={
         "openinference.span.kind": "CHAIN",
         "output.value": output,
+    }) as span:
+        yield span
+
+
+@contextmanager
+def decision_span(name, model):
+    """One call to a decision model. A guardrail in OpenInference's terms:
+    it decides whether the counter acts, it does not talk."""
+    tracer = trace.get_tracer("shopkeeper")
+    with tracer.start_as_current_span(name, attributes={
+        "openinference.span.kind": "GUARDRAIL",
+        "llm.model_name": model,
+        "input.mime_type": "application/json",
+        "output.mime_type": "application/json",
     }) as span:
         yield span
