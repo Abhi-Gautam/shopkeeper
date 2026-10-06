@@ -6,3 +6,6 @@ store/products.csv
 __pycache__/
 *.py[cod]
 store/off/
+store/big.duckdb
+store/big.duckdb.wal
+store/big.csv

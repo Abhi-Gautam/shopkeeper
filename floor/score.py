@@ -68,7 +68,7 @@ def right_items(out, expect):
     missed = [
         f"{name} {pack or ''} x{qty}"
         for name, pack, qty in expect
-        if not any(re.search(name, b["name"] or "", re.I)
+        if not any(re.search(name, f'{b.get("brand") or ""} {b["name"] or ""}', re.I)
                    and pack in (None, b["pack_label"]) and b["qty"] == qty
                    for b in sold)
     ]

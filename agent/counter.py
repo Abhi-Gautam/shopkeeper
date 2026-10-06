@@ -41,7 +41,12 @@ from trace import PROJECT, flush, start as start_trace, tool_span, turn_span
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWLIST = ROOT / "models.allowlist"
-DB = ROOT / "store" / "shop.duckdb"
+# SHOPKEEPER_SHOP=big plays the Open Food Facts shelf (make bigdb) instead
+# of the small made-up one.
+SHOP = os.environ.get("SHOPKEEPER_SHOP", "small")
+if SHOP not in ("small", "big"):
+    raise SystemExit(f"SHOPKEEPER_SHOP must be small or big, not {SHOP}")
+DB = ROOT / "store" / ("big.duckdb" if SHOP == "big" else "shop.duckdb")
 PUBLISH = ROOT / "store" / "publish.sql"
 
 # Model calls per turn before the counter gives up.
@@ -181,7 +186,7 @@ class Shelf:
 
     def __init__(self, db=DB):
         if not Path(db).exists():
-            raise SystemExit(f"missing {db}. Run `make db` from the shopkeeper directory.")
+            raise SystemExit(f"missing {db}. Run `make {'bigdb' if SHOP == 'big' else 'db'}` from the shopkeeper directory.")
         # Read before the MCP process opens the file for writing.
         self.prompt = prompt_name()
         self.instructions = SYSTEM

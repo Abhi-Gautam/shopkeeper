@@ -29,7 +29,7 @@ PRAGMA mcp_publish_tool(
      LIMIT LEAST(GREATEST(COALESCE($limit, 8), 1), 12)',
     '{
         "query": {"type": "string", "description": "Words from the customer: item, brand, or SKU"},
-        "category": {"type": "string", "description": "Optional exact category, one of: flour, grains, pasta, legumes, oil, condiments, spices, tea_coffee, breakfast, snacks, dairy, bakery, canned, baking, beverages, cleaning, personal"},
+        "category": {"type": "string", "description": "Optional exact category name, as the shop lists it"},
         "limit": {"type": "integer", "description": "How many rows. Default 8, hard cap 12"}
     }',
     '["query"]',

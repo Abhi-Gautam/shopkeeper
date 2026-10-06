@@ -42,7 +42,8 @@ from opentelemetry import trace as otel  # noqa: E402
 from score import Experiment, cost  # noqa: E402
 
 UI = ROOT / "ui"
-LINES = Path(__file__).with_name("conversations.txt")
+LINES = Path(__file__).with_name(
+    "conversations-big.txt" if counter.SHOP == "big" else "conversations.txt")
 HOST = "127.0.0.1"
 PORT = 8787
 PHOENIX = "http://127.0.0.1:6006"
@@ -312,6 +313,7 @@ def serve_customer(shop, worker, job):
                         "status": buy_fields(step["result"])["status"],
                         "grounded": sku in shown,
                         "name": row.get("name"),
+                        "brand": row.get("brand"),
                         "pack_label": row.get("pack_label"),
                     })
             out["turns"].append({
@@ -505,9 +507,9 @@ def main():
     tracing.start()
     effort = os.environ.get("OPENROUTER_REASONING_EFFORT") or "default"
     prompt = counter.prompt_name()
-    name = f"{model}-{effort}-{prompt}-{time.strftime('%m%d-%H%M')}"
+    name = f"{model}-{effort}-{prompt}-{counter.SHOP}-{time.strftime('%m%d-%H%M')}"
     experiment = Experiment(PHOENIX, customers, name, {
-        "model": model, "reasoning": effort, "prompt": prompt,
+        "model": model, "reasoning": effort, "prompt": prompt, "shop": counter.SHOP,
         "staff": args.staff, "arrival_per_min": args.arrival,
         "project": tracing.PROJECT,
     })
