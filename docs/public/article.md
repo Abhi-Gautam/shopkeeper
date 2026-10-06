@@ -4,7 +4,7 @@ description: I built a grocery shop with a model behind the counter, and changed
 published: 2026-10-05
 project: Shopkeeper
 repository: https://github.com/Abhi-Gautam/shopkeeper
-sourceCommit: f4ef3762b1a88561397da58e8847cbdb869c23ae
+sourceCommit: c403cea2c0e1f85ab3841f75fb000fafbda4bf21
 ---
 
 A customer walks up to the counter and says, "Heinz ketchup, the 32 ounce bottle." The shopkeeper checks the shelf, finds it, and sells it.
@@ -84,4 +84,4 @@ Next is the selling decision itself: knowing when an order is complete before se
 
 ---
 
-Checked against Shopkeeper commit [`f4ef376`](https://github.com/Abhi-Gautam/shopkeeper/commit/f4ef3762b1a88561397da58e8847cbdb869c23ae). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/f4ef3762b1a88561397da58e8847cbdb869c23ae/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/f4ef3762b1a88561397da58e8847cbdb869c23ae/store/publish.sql), and the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/f4ef3762b1a88561397da58e8847cbdb869c23ae/floor/run.py).
+Checked against Shopkeeper commit [`c403cea`](https://github.com/Abhi-Gautam/shopkeeper/commit/c403cea2c0e1f85ab3841f75fb000fafbda4bf21). The relevant code is the [shopkeeper](https://github.com/Abhi-Gautam/shopkeeper/blob/c403cea2c0e1f85ab3841f75fb000fafbda4bf21/agent/counter.py), the [two tools](https://github.com/Abhi-Gautam/shopkeeper/blob/c403cea2c0e1f85ab3841f75fb000fafbda4bf21/store/publish.sql), and the [runner](https://github.com/Abhi-Gautam/shopkeeper/blob/c403cea2c0e1f85ab3841f75fb000fafbda4bf21/floor/run.py).
