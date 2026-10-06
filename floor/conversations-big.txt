@@ -4,16 +4,19 @@
 
 ---
 Heinz ketchup, the 32 ounce bottle.
+Yes, I'll take it.
 = heinz.*ketchup | 32 oz | 1
 ---
 Honey Nut Cheerios, please. The biggest box you have.
-= honey nut cheerios | 3 lb | 1
+Yes, that one.
+= honey nut cheerios|cheerios honey nut | 3 lb | 1
 ---
 Two bags of Doritos Spicy Nacho, the 9.25 ounce.
 = doritos.*spicy nacho | 9.25 oz | 2
 ---
 Ben & Jerry's chocolate chip cookie dough, a pint.
 If you don't have it, Chocolate Fudge Brownie then.
+Yes, one pint.
 = ben & jerry.*chocolate fudge brownie | 16 fl oz | 1
 ---
 Domino powdered sugar, the one pound bag.
@@ -21,19 +24,23 @@ Then the big one.
 = domino.*powdered sugar | 4 lb | 1
 ---
 Horizon unsalted butter, one pound.
+Yes, please.
 = horizon.*unsalted butter | 454 g | 1
 ---
 Something for breakfast tomorrow. Waffles.
 Eggo blueberry.
+The Eggo one. Just one box.
 = eggo.*blueberry waffles | 12.3 oz | 1
 ---
 Four cans of Campbell's cream of mushroom.
 = campbell.*cream of mushroom | 10.5 oz | 4
 ---
 Folgers decaf, any size.
-= folgers.*decaf | - | 1
+The smallest one, please.
+= folgers.*decaf | 9.6 oz | 1
 ---
 Jasmine rice, a 5 pound bag.
+Yes, I'll take it.
 = jasmine | 5 lb | 1
 ---
 Do you sell phone chargers?
