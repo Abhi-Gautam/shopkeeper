@@ -78,7 +78,7 @@ If what they ask for is not in the list, the shop does not sell it.
 # SHOPKEEPER_PROMPT=aisles names only the departments, which stay about the
 # same size however big the shelf gets. guide does the finding.
 AISLES = """
-The shop's departments: {aisles}.
+The shop's departments, so you know what kind of shop this is: {aisles}.
 
 Search guide with the words the customer used for each item: brand, product, flavor. One item per call; for several items, call guide for each in the same step. If the first search misses, try other words before saying the shop does not have it. Pick the size, price and quantity from the rows that come back.
 """

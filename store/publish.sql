@@ -10,7 +10,9 @@ LOAD fts;
 
 -- Ranked word search over brand, name, item and pack, from the BM25 index
 -- the Makefile builds. Words match on their own, so "Folgers decaf" finds
--- "Classic Decaf" by Folgers. Numbers are not indexed: sizes come from rows.
+-- "Classic Decaf" by Folgers, and numbers are words too, so "21" lifts the
+-- 21 oz box. No category filter: the model guessed categories, and an exact
+-- filter on a wrong guess hid the right product.
 PRAGMA mcp_publish_tool(
     'guide',
     'Search the shelf by words: brand, product, flavor, item. Returns the best matches first, one row per product and pack size, with price and stock. Does not change stock. Call it before talking about price, packs, or substitutes, and before buy. One item per call; call it several times at once for several items.',
@@ -22,7 +24,6 @@ PRAGMA mcp_publish_tool(
      FROM (
          SELECT *, fts_main_products.match_bm25(sku, $query) AS score
          FROM products
-         WHERE $category IS NULL OR category = $category
      )
      WHERE score IS NOT NULL
      QUALIFY row_number() OVER (
@@ -31,8 +32,7 @@ PRAGMA mcp_publish_tool(
      ORDER BY score DESC, (stock = 0), pack_qty
      LIMIT LEAST(GREATEST(COALESCE($limit, 10), 1), 20)',
     '{
-        "query": {"type": "string", "description": "Words for one item: brand and product, like \"heinz ketchup\" or \"decaf coffee\". Sizes do not help."},
-        "category": {"type": "string", "description": "Optional exact category name, as the shop lists it"},
+        "query": {"type": "string", "description": "Words for one item: brand and product, like \"heinz ketchup\" or \"decaf coffee\". A size number helps, like \"21\" for 21 oz."},
         "limit": {"type": "integer", "description": "How many rows. Default 10, hard cap 20"}
     }',
     '["query"]',
